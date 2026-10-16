@@ -21,7 +21,8 @@ export async function runDaemon() {
     const active = await new Promise<boolean>(resolve => { const socket = createConnection(path); socket.on('connect', () => { socket.destroy(); resolve(true); }); socket.on('error', () => resolve(false)); });
     if (active) throw new Error('A daemon already owns this socket');
     await rm(path, { force: true });
-    manager = new Manager(new Store(root), { maxConcurrent: Math.max(1, Math.min(32, Number(process.env.PI_IN_CODEX_CONCURRENCY) || 4)) });
+    manager = new Manager(new Store(root), { maxConcurrent: Math.max(1, Math.min(32, Number(process.env.PI_IN_CODEX_CONCURRENCY) || 4)),
+      maxPerThread: Math.max(1, Math.min(32, Number(process.env.PI_IN_CODEX_CHAT_CONCURRENCY) || 2)) });
     manager.on('diagnostic', (message: string) => process.stderr.write(message + '\n'));
     await manager.init();
     const service = manager;
@@ -65,19 +66,26 @@ export async function dispatch(manager: Manager, request: Request, signal?: Abor
   if (!(request.method in schemas)) throw new Error('Unknown daemon method');
   const name = request.method as ToolName;
   const args: any = schemas[name].parse(request.args || {});
-  switch (name) {
+  const execute = async () => { switch (name) {
     case 'pi_spawn': return manager.spawn(threadId, args);
     case 'pi_list': case 'pi_panel': {
-      const snapshot = manager.snapshot(threadId);
-      return { cursor: snapshot.cursor, pendingCompletions: snapshot.pendingCompletions, agents: snapshot.agents.map(({ messages, context, task, queued, messageTotal, ...summary }) => ({ ...summary, messageCount: messageTotal ?? messages.length, queuedMessages: queued.length })) };
+      return manager.list(threadId, args);
     }
     case 'pi_poll': return manager.poll(threadId, args.cursor, args.waitMs, signal);
     case 'pi_read': return manager.read(threadId, args.agentId, args.limit, args.includeTools, args.includePartial, args.before);
     case 'pi_send': return manager.send(threadId, args.agentId, args.message, args.mode);
+    case 'pi_message': return manager.messageParentToChild(threadId, args.agentId, args.message);
+    case 'pi_follow_up': return manager.send(threadId, args.agentId, args.message, 'followUp');
+    case 'pi_interrupt': return manager.interrupt(threadId, args.agentId);
     case 'pi_stop': return manager.stop(threadId, args.agentId);
     case 'pi_reply': return manager.reply(threadId, args.agentId, args.requestId, args.value, args.confirmed, args.cancelled);
-    case 'pi_wait': return manager.wait(threadId, args.agentIds, args.timeoutMs, signal);
-    case 'pi_ack': return manager.acknowledge(threadId, args.completionIds);
-    case 'pi_models': return manager.models(threadId, args.agentId);
-  }
+    case 'pi_wait': return manager.wait(threadId, args.agentIds, args.timeoutMs, signal, args);
+    case 'pi_events': return manager.events(threadId, args.afterCursor, args.limit, args.eventId);
+    case 'pi_result': return manager.result(threadId, args.completionId, args.offset, args.maxChars);
+    case 'pi_ack': return manager.acknowledge(threadId, args.completionIds, args.eventIds);
+    case 'pi_archive': return manager.archive(threadId, args.agentId, args.archived);
+    case 'pi_models': return manager.models(threadId, args.agentId, args.model);
+  } };
+  return ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up'].includes(name)
+    ? manager.idempotent(threadId, name, args, execute) : execute();
 }

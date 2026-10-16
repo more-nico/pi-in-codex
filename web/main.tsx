@@ -111,7 +111,7 @@ function Panel() {
           try {
             const snapshot = await call('pi_poll', { cursor, waitMs: cursor ? 20_000 : 0 }, controller.signal);
             if (disposed) return;
-            setAgents(previous => mergeAgents(previous, snapshot, id => historyRef.current.has(id)));
+            setAgents(previous => mergeAgents(previous, snapshot, id => historyRef.current.has(id)).filter(agent => !agent.archivedAt));
             setPending(snapshot.pendingCompletions || 0); cursor = snapshot.cursor;
             setError('');
           } catch (e) { if (disposed) return; setError((e as Error).message); cursor = undefined; await new Promise(resolve => setTimeout(resolve, 2000)); }

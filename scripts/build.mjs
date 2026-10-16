@@ -4,6 +4,7 @@ import { join } from 'node:path';
 // Packaging includes dist/: never carry old diagnostics or local files forward.
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist', { recursive: true });
+await writeFile('dist/parent.mjs', await readFile('extensions/parent.mjs', 'utf8'));
 const backend = await build({ entryPoints: ['src/cli.ts'], outfile: 'dist/cli.mjs', bundle: true, platform: 'node', format: 'esm', target: 'node22', sourcemap: true, metafile: true,
   banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' } });
 const ui = await build({ entryPoints: ['web/main.tsx'], outdir: 'dist/web', bundle: true, write: false, platform: 'browser', format: 'iife', target: 'es2022', minify: true, metafile: true, loader: { '.svg': 'dataurl' }, define: { 'process.env.NODE_ENV': '"production"' } });

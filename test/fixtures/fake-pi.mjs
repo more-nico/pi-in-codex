@@ -5,7 +5,7 @@ if (process.argv.includes('--version')) { console.log('1.2.0'); process.exit(0);
 const option = name => process.argv[process.argv.indexOf(name) + 1];
 const directory = process.argv.includes('--session-dir') ? option('--session-dir') : '/tmp';
 const sessionFile = process.argv.includes('--session') ? option('--session') : join(directory, 'fake-session.jsonl');
-mkdirSync(directory, { recursive: true }); writeFileSync(sessionFile, '{}\n');
+if (!process.argv.includes('--no-session')) { mkdirSync(directory, { recursive: true }); writeFileSync(sessionFile, '{}\n'); }
 let buffer = '', running = false, model = { provider: 'fake', id: 'test-model' }, thinkingLevel = 'high', held = '', pendingDialog, startupRequest;
 let startupAsked = false;
 const emit = record => process.stdout.write(JSON.stringify(record) + '\n');
@@ -28,6 +28,8 @@ function begin(command) {
   emit({ type: 'message_start', message: message('assistant', '', 'pending') });
   if (command.message === 'fast') { emit({ type: 'message_end', message: message('assistant', 'FAST_OK') }); emit({ type: 'agent_end', messages: [] }); running = false; emit({ type: 'agent_settled', aborted: false }); return; }
   if (command.message === 'hold') return;
+  if (command.message === 'report') { setTimeout(() => emit({ type: 'extension_ui_request', method: 'notify', message: 'pi_in_codex_report:' + JSON.stringify({ message: '发现需要协调的接口变更' }) }), 15); return; }
+  if (command.message === 'long') { finish('完整结果✓'.repeat(5000)); return; }
   if (command.message === 'end-only') { emit({ type: 'agent_end', messages: [] }); return; }
   if (command.message === 'crash') { setTimeout(() => process.exit(2), 10); return; }
   if (command.message === 'malformed') { process.stdout.write('{broken\n'); return; }
@@ -57,6 +59,7 @@ function begin(command) {
 function handle(command) {
   switch (command.type) {
     case 'get_state':
+      if (process.argv.includes('--extension') && !process.argv.includes('--broken-bridge')) emit({ type: 'extension_ui_request', method: 'notify', message: 'pi_in_codex_ready' });
       if (process.argv.includes('--startup-dialog') && !startupAsked) { startupAsked = true; startupRequest = command; emit({ type: 'extension_ui_request', id: 'startup-input', method: 'input', title: 'startup input' }); }
       else if (process.argv.includes('--slow-state')) setTimeout(() => response(command, { model, thinkingLevel, sessionFile, isStreaming: running }), 5000);
       else response(command, { model, thinkingLevel, sessionFile, sessionId: 'fake-session', isStreaming: running });

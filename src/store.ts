@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Database } from './types.js';
 export class Store {
-  data: Database = { version: 1, agents: [], completions: [], parents: [] };
+  data: Database = { version: 1, agents: [], completions: [], parents: [], events: [], receipts: [] };
   private writes = Promise.resolve();
   constructor(readonly root: string) {}
   async load() {
@@ -11,7 +11,8 @@ export class Store {
     try {
       const parsed = JSON.parse(await readFile(join(this.root, 'state.json'), 'utf8'));
       if (parsed.version !== 1 || !Array.isArray(parsed.agents) || !Array.isArray(parsed.completions) || !Array.isArray(parsed.parents)) throw new Error('Unsupported or damaged state database');
-      this.data = parsed;
+      if (parsed.events !== undefined && !Array.isArray(parsed.events) || parsed.receipts !== undefined && !Array.isArray(parsed.receipts)) throw new Error('Damaged mailbox or receipts');
+      this.data = { ...parsed, events: parsed.events || [], receipts: parsed.receipts || [] };
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
   }
   save() {

@@ -49,10 +49,14 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   };
   let client = await attach();
   const tools = await client.listTools();
-  for (const name of ['pi_spawn', 'pi_send', 'pi_stop', 'pi_reply', 'pi_ack']) {
+  for (const name of ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up', 'pi_interrupt', 'pi_stop', 'pi_reply', 'pi_ack', 'pi_archive']) {
     assert.deepEqual((tools.tools.find(tool => tool.name === name)!._meta!.ui as any).visibility, ['model']);
   }
   assert.deepEqual(tools.tools.find(tool => tool.name === 'pi_poll')!._meta?.ui && (tools.tools.find(tool => tool.name === 'pi_poll')!._meta!.ui as any).visibility, ['app']);
+  assert.deepEqual((tools.tools.find(tool => tool.name === 'pi_models')!._meta!.ui as any).visibility, ['model', 'app']);
+  const modelsBeforeSpawn = jsonResult(await client.callTool({ name: 'pi_models', arguments: {}, _meta: metadata('chat-a') }));
+  assert.equal(modelsBeforeSpawn.selected.id, 'test-model');
+  assert.equal(jsonResult(await client.callTool({ name: 'pi_list', arguments: {}, _meta: metadata('chat-a') })).agents.length, 0);
   const resource = await client.readResource({ uri: 'ui://pi-in-codex/panel-v1.html' });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
   assert.ok((resource.contents[0] as any).text.includes('Pi agents'));
@@ -81,6 +85,16 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   const answered = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [interactive.agentId], timeoutMs: 3000 }, _meta: metadata('chat-a') }));
   assert.equal(answered.agents[0].status, 'completed');
   assert.equal(answered.agents[0].result.text, '由主会话处理');
+  const reporter = jsonResult(await client.callTool({ name: 'pi_spawn', arguments: { name: 'progress', task: 'report', requestId: 'report-1' }, _meta: metadata('chat-a') }));
+  const sameReporter = jsonResult(await client.callTool({ name: 'pi_spawn', arguments: { name: 'progress', task: 'report', requestId: 'report-1' }, _meta: metadata('chat-a') }));
+  assert.equal(sameReporter.agentId, reporter.agentId);
+  const progress = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [reporter.agentId], timeoutMs: 3000 }, _meta: metadata('chat-a') }));
+  assert.equal(progress.reason, 'message');
+  assert.match((await hook('chat-a', 'UserPromptSubmit', 'progress-turn')).hookSpecificOutput.additionalContext, /接口变更/);
+  jsonResult(await client.callTool({ name: 'pi_ack', arguments: { eventIds: [progress.events[0].id] }, _meta: metadata('chat-a') }));
+  const history = jsonResult(await client.callTool({ name: 'pi_result', arguments: { completionId: completion.id }, _meta: metadata('chat-a') }));
+  assert.match(history.text, /你好/);
+  jsonResult(await client.callTool({ name: 'pi_stop', arguments: { agentId: reporter.agentId }, _meta: metadata('chat-a') }));
 });
 
 test('isolated install uses marketplace-root paths, retains other plugins, and release bundle runs without node_modules', async t => {

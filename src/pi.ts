@@ -13,9 +13,9 @@ export class PiProcess extends EventEmitter {
   private closing = false;
   private closed = false;
   private stderr = '';
-  constructor(executable: string, args: string[], cwd: string) {
+  constructor(executable: string, args: string[], cwd: string, environment: Record<string, string | undefined> = {}) {
     super();
-    this.child = spawn(executable, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, PI_TELEMETRY: '0' } });
+    this.child = spawn(executable, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, PI_TELEMETRY: '0', ...environment } });
     const decoder = new JsonLines(record => this.record(record), error => this.fail(error));
     this.child.stdout.on('data', chunk => decoder.push(chunk));
     this.child.stderr.on('data', chunk => { this.stderr = (this.stderr + errorText(chunk.toString())).slice(-4000); });

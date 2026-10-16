@@ -52,11 +52,19 @@ node bin/pi-in-codex.mjs install
 | `pi_ack` | 主对话读取完成结果后，确认其 completionId |
 | `pi_reply` | 由主对话回答 pi 扩展的输入、选择或确认请求 |
 
-面板内部还使用 `pi_poll`、`pi_models`。面板只读，不提供消息输入、发送、停止或
+新增 `pi_message`（闲置不启动）、`pi_follow_up`（显式跟进）、`pi_interrupt`（软中断）、
+`pi_events`（通知邮箱）、`pi_result`（完整结果分页）、`pi_archive`（归档与恢复）。
+`pi_models` 已向主会话开放，创建前即可查询模型；传入 model 可查询该模型的思考档位。
+
+面板内部还使用 `pi_poll`。面板只读，不提供消息输入、发送、停止或
 交互表单；这些操作均由 Codex 主对话通过工具完成。子对话完成默认折叠，
 选中时仅展示最终 Markdown 总结，点击“用时”折叠行才展开消息与工具调用，最终总结始终保留。
 失败和等待主对话处理交互的状态保持可见。
 模型参数为 `{ provider, id, thinking? }`；省略时使用 pi 默认配置。
+创建仅必填 name、task；背景通过 context 显式传递，cwd 默认沿用主会话。
+可选 profile（worker/reviewer/explorer）、任务 path 和 group。审查与探索预设只允许
+read、grep、find、ls、pi_report 工具，属于工具限制，不是操作系统沙箱。
+详见 [接口对照与语义](docs/SUBAGENT_PARITY.md)。
 
 Codex 在创建或恢复子任务前，先根据任务范围与模型给出粗略耗时范围，再据此选择
 `pi_wait.timeoutMs`，例如预计 5–10 分钟可传 `600000`。这是最长等待时间，
@@ -75,10 +83,15 @@ Codex 在创建或恢复子任务前，先根据任务范围与模型给出粗�
 子任务完成后结果持久化保存。hooks 在主对话工具结束、结束当前轮或下一轮
 开始时，向原聊天注入最后一条回复。主对话闲置时不会主动唤醒，待下一轮接收。
 Stop hook 只为新结果触发续轮，不循环等待仍在运行的任务。
+运行中可通过注入的 pi_report 报告进展或阻塞；输入请求也通过安全点提醒。
+pi_wait 支持 runIds、afterCursor、mode（any/all）和 wakeOnMessages；连续等待时传回游标。
+pi_events 按游标读通知，指定 eventId 读取完整通知，pi_ack.eventIds 确认已读。
+创建与发送支持 requestId 重试键；相同参数返回原响应，崩溃后的不确定投递不自动重放。
 主对话通过 `pi_ack` 确认接收；未确认结果在后续轮次可再次提供，使用稳定 ID 去重。
-过长回复提供预览，完整内容可用 `pi_read` 读取。失败、停止、中断均标记为部分结果。
+过长回复提供预览，完整内容可用 `pi_result` 分页读取。失败、停止、中断均标记为部分结果。
 
-默认并发 4 个，关闭面板或断开 MCP 后继续运行。完成的 pi 进程闲置 5 分钟后释放，
+默认全局并发 4 个、每聊天最多 2 个，按聊天公平排队。关闭面板或断开 MCP 后继续运行。
+完成的 pi 进程闲置 5 分钟后释放，
 再次发消息时加载原会话。守护进程退出后，未完成任务标记为“已中断”，不自动重放。
 升级/重新安装和卸载会先停止原守护进程，正在运行的任务因此中断。
 等待输入的子对话也占用一个并发名额，回答请求或停止它后释放。
@@ -92,7 +105,8 @@ pi 使用自身工具与执行权限，并不继承 Codex 沙箱。子对话共�
 - `PI_IN_CODEX_PI_PATH`：pi 可执行文件的绝对路径，默认通过 PATH 查找。
 - `PI_IN_CODEX_NODE_PATH`：Node 路径，默认使用安装时记录的路径。
 - `PI_IN_CODEX_DATA_DIR`：运行数据目录。
-- `PI_IN_CODEX_CONCURRENCY`：并发数，默认 4，范围 1–32。
+- `PI_IN_CODEX_CONCURRENCY`：全局并发数，默认 4，范围 1–32。
+- `PI_IN_CODEX_CHAT_CONCURRENCY`：每聊天并发数，默认 2，范围 1–32。
 - `PI_CODING_AGENT_DIR`：沿用 pi 配置目录，默认 `~/.pi/agent`。
 
 启动脚本将 Node 的 bin 目录和 Homebrew 路径加入 PATH。其他位置的 pi 请显式配置路径。
@@ -113,7 +127,7 @@ node bin/pi-in-codex.mjs uninstall
 ```sh
 npm run check
 npm run dev:ui
-# 浏览 http://127.0.0.1:4173/?demo=1 查看带“演示数据”标记的面板
+# 浏览 http://127.0.0.1:4173/?demo=1 查看模拟任务面板
 # /preview.html 对比 380px 浅色与深色侧栏
 npm run pack:plugin
 ```

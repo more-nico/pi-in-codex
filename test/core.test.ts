@@ -43,7 +43,10 @@ test('custom waits time out without stopping the child and can be cancelled prom
   assert.ok(Date.now() - started >= 30);
   const controller = new AbortController();
   const cancellation = setTimeout(() => controller.abort(), 20);
-  try { assert.equal((await manager.wait('chat-a', [child.agentId], MAX_WAIT_MS, controller.signal)).timedOut, true); }
+  try {
+    const cancelled = await manager.wait('chat-a', [child.agentId], MAX_WAIT_MS, controller.signal);
+    assert.equal(cancelled.reason, 'cancelled'); assert.equal(cancelled.timedOut, false);
+  }
   finally { clearTimeout(cancellation); }
   assert.ok(['starting', 'running'].includes(manager.snapshot('chat-a').agents[0].status));
 });

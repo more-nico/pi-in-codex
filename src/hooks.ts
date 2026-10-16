@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ensureDaemon, request } from './client.js';
 import { formatDelivery } from './manager.js';
 import { errorText } from './config.js';
-import type { Completion } from './types.js';
+import type { Completion, MailEvent } from './types.js';
 
 export async function runHook(input: Record<string, any>) {
   const event = input.hook_event_name;
@@ -11,7 +11,7 @@ export async function runHook(input: Record<string, any>) {
   await request('hook_register', input.session_id, { cwd: input.cwd, permissionMode: input.permission_mode, turnId: input.turn_id });
   // Turn-scoped events must agree on the same key; session-only events get a fresh receipt opportunity.
   const turn = input.turn_id || `${event}:${randomUUID()}`;
-  const results: Completion[] = await request('hook_deliver', input.session_id, { turn });
+  const results: Array<Completion | MailEvent> = await request('hook_deliver', input.session_id, { turn });
   if (!results.length) return {};
   const context = results.map(formatDelivery).join('\n\n');
   if (event === 'Stop') return { decision: 'block', reason: context };

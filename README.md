@@ -65,11 +65,25 @@ agents through tools in the parent chat; there are no panel input forms.
 | `pi_wait` | Required custom `timeoutMs`, 0–3,600,000 (60 minutes); returns early on completion or input |
 | `pi_ack` | Acknowledge completion IDs after the parent reads their results |
 | `pi_reply` | Parent-chat response to a Pi extension input, selection or confirmation request |
+| `pi_message` | Deliver information without starting an idle child |
+| `pi_follow_up` | Explicitly start or queue another task |
+| `pi_interrupt` | Abort a run while retaining a responsive process |
+| `pi_events` | Read mailbox previews by cursor, or a full notice by eventId |
+| `pi_result` | Page complete results by stable completionId, including older runs |
+| `pi_models` | Discover models before spawning; optionally probe a selected model |
+| `pi_archive` | Archive/restore settled tasks, preserving history and pending results |
 
-`pi_panel`, `pi_poll`, and `pi_models` support the UI; the latter two are app-only.
+Only `name` and `task` are required to create a child. Background stays explicit;
+directory and Pi model defaults apply when omitted. Optional `profile` selects
+worker/reviewer/explorer; inspection profiles restrict tools to
+read/grep/find/ls/pi_report through an allowlist and extension gate, not an OS
+sandbox. Optional task paths/groups support scoped aliases and filtering.
+See [invocation and coordination semantics](docs/SUBAGENT_PARITY.md).
+
+Only `pi_poll` is app-only; `pi_models` is also available to the parent.
 Mutation tools are model-only. Completed tasks open on their final Markdown
 summary; expand the **用时** disclosure to inspect calls and messages with history paging.
-`?demo=1` on the development page shows **labeled simulated data**;
+`?demo=1` on the development page shows simulated data;
 it does not launch agents or prove the Codex host integration.
 
 Before starting or resuming a Pi task, Codex estimates its duration and shares a
@@ -96,12 +110,20 @@ hooks deliver them to **their original parent chat** at safe points. A Stop hook
 continues once for newly offered results; it never loops waiting for agents.
 Idle parents are not woken up: their next turn receives the pending results.
 
+Pi can use its injected `pi_report` tool for progress or blockers; extension input
+requests also reach safe-point hooks. `pi_wait` supports runIds, afterCursor,
+any/all completion modes and progress wakeups; reuse the cursor to skip old
+results. `pi_ack` accepts eventIds and/or completionIds. Retry requestIds are
+supported on spawn/send/message/follow_up; ambiguous crash deliveries are not
+automatically replayed.
+
 The parent acknowledges completion IDs with `pi_ack`. Results may be reoffered
 on later turns until acknowledged; completion IDs make duplicate handling explicit.
-Long results have a preview plus a `pi_read` reference. In a crash between handing
+Long results have a preview plus a `pi_result` reference. In a crash between handing
 hook output to Codex and host consumption, the next turn can redeliver the result.
 
-Default concurrency is 4. Settled processes are released after 5 minutes and
+Default concurrency is four globally and two per chat, with fair scheduling.
+Settled processes are released after 5 minutes and
 restored from Pi sessions on demand. Restarting the daemon marks unfinished work
 interrupted rather than silently replaying tasks. Reinstalling/upgrading or
 uninstalling stops the old daemon and interrupts active runs.
@@ -122,6 +144,7 @@ directory; divide write tasks to avoid concurrent edits.
 | `PI_IN_CODEX_NODE_PATH` | Node path recorded by the installer |
 | `PI_IN_CODEX_DATA_DIR` | Codex user data directory + `pi_in_codex` |
 | `PI_IN_CODEX_CONCURRENCY` | 4 (1–32) |
+| `PI_IN_CODEX_CHAT_CONCURRENCY` | 2 (1–32) |
 | `PI_CODING_AGENT_DIR` | Pi's own default (`~/.pi/agent`) |
 
 The launcher prepends Node's bin directory and Homebrew paths to PATH. If Pi is
