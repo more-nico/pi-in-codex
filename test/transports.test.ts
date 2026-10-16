@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { request } from '../src/client.js';
+import { MAX_WAIT_MS } from '../src/wait.js';
 
 const cli = fileURLToPath(new URL('../dist/cli.mjs', import.meta.url));
 function execute(args: string[], env: NodeJS.ProcessEnv, input = ''): Promise<{ stdout: string; stderr: string }> {
@@ -48,6 +49,9 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   };
   let client = await attach();
   const tools = await client.listTools();
+  for (const name of ['pi_spawn', 'pi_send', 'pi_stop', 'pi_reply', 'pi_ack']) {
+    assert.deepEqual((tools.tools.find(tool => tool.name === name)!._meta!.ui as any).visibility, ['model']);
+  }
   assert.deepEqual(tools.tools.find(tool => tool.name === 'pi_poll')!._meta?.ui && (tools.tools.find(tool => tool.name === 'pi_poll')!._meta!.ui as any).visibility, ['app']);
   const resource = await client.readResource({ uri: 'ui://pi-in-codex/panel-v1.html' });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
@@ -56,7 +60,9 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   const child = jsonResult(await client.callTool({ name: 'pi_spawn', arguments: { name: '传输测试', task: 'normal' }, _meta: metadata('chat-a') }));
   assert.equal(jsonResult(await client.callTool({ name: 'pi_list', arguments: {}, _meta: metadata('chat-b') })).agents.length, 0);
   const denied = await client.callTool({ name: 'pi_read', arguments: { agentId: child.agentId }, _meta: metadata('chat-b') }); assert.equal(denied.isError, true);
-  const waited = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [child.agentId], timeoutMs: 3000 }, _meta: metadata('chat-a') }));
+  const waitStarted = Date.now();
+  const waited = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [child.agentId], timeoutMs: MAX_WAIT_MS }, _meta: metadata('chat-a') }, undefined, { timeout: MAX_WAIT_MS + 20_000 }));
+  assert.ok(Date.now() - waitStarted < 5000, 'An hour-long wait must finish early when the child settles');
   assert.equal(waited.agents[0].status, 'completed');
   const first = await hook('chat-a', 'Stop', 'turn-2'); assert.equal(first.decision, 'block'); assert.match(first.reason, /完成：你好/);
   assert.deepEqual(await hook('chat-a', 'Stop', 'turn-2'), {});
@@ -68,6 +74,13 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   await client.close(); client = await attach();
   assert.equal((await request('ping')).pid, pid);
   assert.match(jsonResult(await client.callTool({ name: 'pi_read', arguments: { agentId: child.agentId }, _meta: metadata('chat-a') })).messages.at(-1).text, /你好/);
+  const interactive = jsonResult(await client.callTool({ name: 'pi_spawn', arguments: { name: 'parent handles input', task: 'dialog' }, _meta: metadata('chat-a') }));
+  const needsReply = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [interactive.agentId], timeoutMs: 3000 }, _meta: metadata('chat-a') }));
+  assert.equal(needsReply.agents[0].status, 'waiting_input');
+  jsonResult(await client.callTool({ name: 'pi_reply', arguments: { agentId: interactive.agentId, requestId: needsReply.agents[0].dialogs[0].id, value: '由主会话处理' }, _meta: metadata('chat-a') }));
+  const answered = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [interactive.agentId], timeoutMs: 3000 }, _meta: metadata('chat-a') }));
+  assert.equal(answered.agents[0].status, 'completed');
+  assert.equal(answered.agents[0].result.text, '由主会话处理');
 });
 
 test('isolated install uses marketplace-root paths, retains other plugins, and release bundle runs without node_modules', async t => {

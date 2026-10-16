@@ -32,6 +32,16 @@ function begin(command) {
   if (command.message === 'crash') { setTimeout(() => process.exit(2), 10); return; }
   if (command.message === 'malformed') { process.stdout.write('{broken\n'); return; }
   if (command.message === 'dialog') { pendingDialog = 'input-1'; emit({ type: 'extension_ui_request', id: pendingDialog, method: 'input', title: '请输入说明' }); return; }
+  if (command.message === 'tools') {
+    const call = { role: 'assistant', content: [{ type: 'text', text: '准备执行检查。' }, { type: 'toolCall', id: 'call-1', name: 'bash', arguments: { command: `echo ${'x'.repeat(60)}` } }], stopReason: 'toolUse', timestamp: Date.now(), usage: { totalTokens: 5 } };
+    emit({ type: 'message_end', message: call });
+    const toolResult = { role: 'toolResult', toolCallId: 'call-1', toolName: 'bash', content: [{ type: 'text', text: '命令输出行1\n命令输出行2' }], isError: false, timestamp: Date.now() };
+    emit({ type: 'message_start', message: toolResult }); emit({ type: 'message_end', message: toolResult });
+    const shell = { role: 'bashExecution', command: 'npm test', output: 'ok', exitCode: 0, cancelled: false, truncated: false, timestamp: Date.now() };
+    emit({ type: 'message_start', message: shell }); emit({ type: 'message_end', message: shell });
+    emit({ type: 'message_start', message: message('assistant', '', 'pending') });
+    finish('工具检查完成'); return;
+  }
   if (command.message === 'retry') {
     emit({ type: 'agent_end', messages: [], willRetry: true });
     emit({ type: 'auto_retry_start', attempt: 1, maxAttempts: 3, delayMs: 150 });

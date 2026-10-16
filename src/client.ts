@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { JsonLines } from './jsonl.js';
 import { dataRoot, socketPath } from './config.js';
+import { daemonRequestTimeout } from './wait.js';
 import type { Response } from './types.js';
 
-export function request(method: string, threadId?: string, args: Record<string, any> = {}, timeoutMs = 70_000, signal?: AbortSignal): Promise<any> {
+export function request(method: string, threadId?: string, args: Record<string, any> = {}, timeoutMs = daemonRequestTimeout(method, args), signal?: AbortSignal): Promise<any> {
   return new Promise((resolve, reject) => {
     const id = randomUUID(), socket = createConnection(socketPath()); let done = false;
     const finish = (error?: Error, result?: unknown) => {

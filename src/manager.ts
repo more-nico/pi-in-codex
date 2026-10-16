@@ -7,12 +7,25 @@ import { promisify } from 'node:util';
 import { Store } from './store.js';
 import { PiProcess } from './pi.js';
 import { errorText } from './config.js';
-import { ACTIVE, type Agent, type Completion, type Message, type Parent, type PiRecord, type SpawnInput } from './types.js';
+import { validateWaitTimeout } from './wait.js';
+import { ACTIVE, type Agent, type Completion, type Message, type Parent, type PiRecord, type SpawnInput, type ToolCall } from './types.js';
 
 export interface ManagerOptions { executable?: string; prefixArgs?: string[]; maxConcurrent?: number; idleMs?: number; extraArgs?: string[] }
+// The panel loads history in pages; snapshots carry only the newest window so
+// polling never ships a full transcript. Keep this in sync with web/messages.ts.
+const WINDOW = 50;
+const MAX_ARGUMENT_LENGTH = 4_000;
 const busy = (agent: Agent) => ['starting', 'running', 'waiting_input'].includes(agent.status);
 const plain = (value: any): string => typeof value === 'string' ? value : Array.isArray(value)
   ? value.filter(block => block?.type === 'text').map(block => block.text || '').join('\n') : '';
+const messageText = (value: PiRecord): string => value.role === 'bashExecution' ? String(value.output ?? '')
+  : value.role === 'branchSummary' || value.role === 'compactionSummary' ? String(value.summary ?? '') : plain(value.content);
+const toolCalls = (value: PiRecord): ToolCall[] | undefined => Array.isArray(value.content)
+  ? value.content.filter((block: any) => block?.type === 'toolCall' && typeof block.name === 'string').map((block: any) => ({
+      id: String(block.id || ''), name: String(block.name),
+      arguments: String(JSON.stringify(block.arguments ?? {})).slice(0, MAX_ARGUMENT_LENGTH),
+    }))
+  : undefined;
 const actions: Record<string, string> = { read: 'reading', bash: 'running command', edit: 'editing', write: 'writing', grep: 'searching', find: 'finding files', ls: 'listing' };
 
 export class Manager extends EventEmitter {
@@ -75,7 +88,8 @@ export class Manager extends EventEmitter {
     return {
       cursor: this.cursor(threadId),
       full: true,
-      agents: this.store.data.agents.filter(agent => agent.threadId === threadId).map(agent => ({ ...agent, messages: agent.messages.slice(-200) })),
+      agents: this.store.data.agents.filter(agent => agent.threadId === threadId).map(agent => ({ ...agent, messageTotal: agent.messages.length, messages: agent.messages.slice(-WINDOW),
+        finalText: agent.status === 'completed' ? this.store.data.completions.findLast(result => result.agentId === agent.id && result.runId === agent.runId)?.text : undefined })),
       pendingCompletions: this.store.data.completions.filter(result => result.threadId === threadId && !result.acknowledged).length,
     };
   }
@@ -187,8 +201,11 @@ export class Manager extends EventEmitter {
     const role = value.role || 'assistant';
     const current = agent.messages.at(-1);
     const message: Message = { id: current && !current.complete && current.role === role ? current.id : randomUUID(), runId: agent.runId,
-      role, text: plain(value.content), timestamp: value.timestamp || Date.now(), complete,
-      toolName: value.toolName, error: value.errorMessage ? errorText(value.errorMessage) : undefined };
+      role, text: messageText(value), timestamp: value.timestamp || Date.now(), complete,
+      toolName: value.toolName, toolCallId: value.toolCallId, toolCalls: role === 'assistant' ? toolCalls(value) : undefined,
+      command: role === 'bashExecution' ? String(value.command ?? '') : undefined,
+      isError: typeof value.isError === 'boolean' ? value.isError : undefined,
+      error: value.errorMessage ? errorText(value.errorMessage) : undefined };
     if (current && !current.complete && current.role === role) agent.messages[agent.messages.length - 1] = message;
     else agent.messages.push(message);
     if (role === 'assistant' && complete) {
@@ -350,6 +367,7 @@ export class Manager extends EventEmitter {
     await this.persist(); this.changed(threadId, false); return { accepted: true };
   }
   async wait(threadId: string, ids: string[], timeoutMs = 20_000, signal?: AbortSignal) {
+    validateWaitTimeout(timeoutMs);
     const agents = ids.map(id => this.owned(threadId, id));
     const settled = () => agents.some(agent => !ACTIVE.has(agent.status) || agent.status === 'waiting_input');
     const deadline = Date.now() + timeoutMs;

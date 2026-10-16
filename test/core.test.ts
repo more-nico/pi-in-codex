@@ -7,8 +7,46 @@ import { fileURLToPath } from 'node:url';
 import { Manager } from '../src/manager.js';
 import { Store } from '../src/store.js';
 import { JsonLines } from '../src/jsonl.js';
-import { resolveThread } from '../src/schemas.js';
+import { resolveThread, schemas } from '../src/schemas.js';
+import { MAX_WAIT_MS, WAIT_RESPONSE_GRACE_MS, daemonRequestTimeout } from '../src/wait.js';
 const fake = fileURLToPath(new URL('./fixtures/fake-pi.mjs', import.meta.url));
+test('custom waits require an explicit duration and support up to sixty minutes end to end', () => {
+  const agentIds = ['00000000-0000-4000-8000-000000000001'];
+  assert.equal(schemas.pi_wait.parse({ agentIds, timeoutMs: MAX_WAIT_MS }).timeoutMs, 3_600_000);
+  assert.equal(schemas.pi_wait.parse({ agentIds, timeoutMs: 0 }).timeoutMs, 0);
+  for (const timeoutMs of [undefined, -1, 1.5, MAX_WAIT_MS + 1, Infinity]) {
+    assert.equal(schemas.pi_wait.safeParse({ agentIds, timeoutMs }).success, false);
+  }
+  assert.equal(daemonRequestTimeout('pi_wait', { timeoutMs: MAX_WAIT_MS }), MAX_WAIT_MS + WAIT_RESPONSE_GRACE_MS);
+  assert.equal(daemonRequestTimeout('pi_list', {}), 70_000);
+});
+
+test('a sixty-minute wait returns immediately on settlement and queues the final parent result', async t => {
+  const { manager } = await fixture(t);
+  const child = await manager.spawn('chat-a', { name: 'early completion', task: 'normal' });
+  const started = Date.now();
+  const result = await manager.wait('chat-a', [child.agentId], MAX_WAIT_MS);
+  assert.ok(Date.now() - started < 5000);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.agents[0].status, 'completed');
+  assert.equal(manager.snapshot('chat-a').agents[0].finalText, result.agents[0].result!.text);
+  const deliveries = await manager.deliveries('chat-a', 'early-result');
+  assert.equal(deliveries[0].id, result.agents[0].result!.id);
+  assert.match(deliveries[0].text, /你好/);
+});
+
+test('custom waits time out without stopping the child and can be cancelled promptly', async t => {
+  const { manager } = await fixture(t);
+  const child = await manager.spawn('chat-a', { name: 'held', task: 'hold' });
+  const started = Date.now();
+  assert.equal((await manager.wait('chat-a', [child.agentId], 40)).timedOut, true);
+  assert.ok(Date.now() - started >= 30);
+  const controller = new AbortController();
+  const cancellation = setTimeout(() => controller.abort(), 20);
+  try { assert.equal((await manager.wait('chat-a', [child.agentId], MAX_WAIT_MS, controller.signal)).timedOut, true); }
+  finally { clearTimeout(cancellation); }
+  assert.ok(['starting', 'running'].includes(manager.snapshot('chat-a').agents[0].status));
+});
 async function fixture(t: any, concurrency = 4) {
   const root = await mkdtemp(join(tmpdir(), 'pi-in-codex-test-'));
   const manager = new Manager(new Store(root), { executable: process.execPath, prefixArgs: [fake], maxConcurrent: concurrency, idleMs: 1000 });
@@ -177,6 +215,49 @@ test('restart restores transcripts and marks unfinished work interrupted', async
   const next = await recovered.send('chat-a', child.agentId, 'normal');
   assert.notEqual(next.runId, child.runId);
   await recovered.wait('chat-a', [child.agentId], 3000); await recovered.close();
+});
+test('snapshots window the newest 50 messages and pi_read walks exact page boundaries', async t => {
+  const { manager } = await fixture(t);
+  const child = await manager.spawn('chat-a', { name: 'history', task: 'hold' });
+  await until(() => manager.snapshot('chat-a').agents[0].messages.length >= 2);
+  const record = manager.store.data.agents.find(agent => agent.id === child.agentId)!;
+  const total = 120;
+  record.messages = Array.from({ length: total }, (_, index) => ({ id: `h${String(index).padStart(3, '0')}`, runId: record.runId,
+    role: index % 2 ? 'assistant' : 'user', text: `#${index}`, complete: index !== total - 1, timestamp: Date.now() + index }));
+  const snapshot = manager.snapshot('chat-a').agents[0];
+  assert.equal(snapshot.messageTotal, total);
+  assert.equal(snapshot.messages.length, 50);
+  assert.equal(snapshot.messages[0].id, 'h070');
+  assert.equal(snapshot.messages.at(-1)!.id, 'h119');
+  assert.equal(snapshot.messages.at(-1)!.complete, false);
+  const first = manager.read('chat-a', child.agentId, 50, true, true, snapshot.messages[0].id);
+  assert.equal(first.messages.length, 50);
+  assert.equal(first.messages[0].id, 'h020');
+  assert.equal(first.hasMore, true);
+  const second = manager.read('chat-a', child.agentId, 50, true, true, first.messages[0].id);
+  assert.equal(second.messages.length, 20);
+  assert.equal(second.messages[0].id, 'h000');
+  assert.equal(second.hasMore, false);
+  const exact = manager.read('chat-a', child.agentId, 50, true, true, 'h050');
+  assert.equal(exact.messages.length, 50);
+  assert.equal(exact.hasMore, false);
+  assert.throws(() => manager.read('chat-a', child.agentId, 50, true, true, 'missing'), /Unknown message cursor/);
+});
+test('tool calls, tool results and shell messages keep arguments for collapsed rows', async t => {
+  const { manager } = await fixture(t);
+  const child = await manager.spawn('chat-a', { name: 'tools', task: 'tools' });
+  assert.equal((await manager.wait('chat-a', [child.agentId], 3000)).agents[0].status, 'completed');
+  const messages = manager.read('chat-a', child.agentId, 50, true).messages;
+  const assistant = messages.find(message => message.toolCalls?.length);
+  assert.equal(assistant!.toolCalls![0].name, 'bash');
+  assert.match(assistant!.toolCalls![0].arguments, /echo x{10,}/);
+  const result = messages.find(message => message.role === 'toolResult');
+  assert.equal(result!.toolName, 'bash');
+  assert.equal(result!.isError, false);
+  assert.match(result!.text, /命令输出行2/);
+  const shell = messages.find(message => message.role === 'bashExecution');
+  assert.equal(shell!.command, 'npm test');
+  assert.equal(shell!.text, 'ok');
 });
 test('polling wakes only for its owner and supports a fresh cursor after restart', async t => {
   const { manager } = await fixture(t);

@@ -69,7 +69,7 @@ export async function dispatch(manager: Manager, request: Request, signal?: Abor
     case 'pi_spawn': return manager.spawn(threadId, args);
     case 'pi_list': case 'pi_panel': {
       const snapshot = manager.snapshot(threadId);
-      return { cursor: snapshot.cursor, pendingCompletions: snapshot.pendingCompletions, agents: snapshot.agents.map(({ messages, context, task, queued, ...summary }) => ({ ...summary, messageCount: messages.length, queuedMessages: queued.length })) };
+      return { cursor: snapshot.cursor, pendingCompletions: snapshot.pendingCompletions, agents: snapshot.agents.map(({ messages, context, task, queued, messageTotal, ...summary }) => ({ ...summary, messageCount: messageTotal ?? messages.length, queuedMessages: queued.length })) };
     }
     case 'pi_poll': return manager.poll(threadId, args.cursor, args.waitMs, signal);
     case 'pi_read': return manager.read(threadId, args.agentId, args.limit, args.includeTools, args.includePartial, args.before);

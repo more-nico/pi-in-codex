@@ -3,7 +3,7 @@
     "pi_in_codex": {
       "command": "/bin/sh", "args": ["${PLUGIN_ROOT}/scripts/launch.sh", "mcp"],
       "env_vars": ["PATH", "CODEX_HOME", "PI_IN_CODEX_DATA_DIR", "PI_IN_CODEX_SOCKET", "PI_IN_CODEX_PI_PATH", "PI_IN_CODEX_NODE_PATH", "PI_IN_CODEX_CONCURRENCY", "PI_CODING_AGENT_DIR", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "MOONSHOT_API_KEY", "MINIMAX_API_KEY"],
-      "startup_timeout_sec": 30, "tool_timeout_sec": 90
+      "startup_timeout_sec": 30, "tool_timeout_sec": 3660
     }
   }
 }

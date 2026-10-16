@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_WAIT_MS } from './wait.js';
 const agentId = z.string().uuid();
 const text = z.string().trim().min(1);
 export const schemas = {
@@ -7,7 +8,7 @@ export const schemas = {
   pi_read: z.object({ agentId, limit: z.number().int().min(1).max(200).default(5), includeTools: z.boolean().default(false), includePartial: z.boolean().default(true), before: z.string().optional() }),
   pi_send: z.object({ agentId, message: text, mode: z.enum(['steer', 'followUp']).default('steer') }),
   pi_stop: z.object({ agentId }),
-  pi_wait: z.object({ agentIds: z.array(agentId).min(1).max(50), timeoutMs: z.number().int().min(0).max(60_000).default(20_000) }),
+  pi_wait: z.object({ agentIds: z.array(agentId).min(1).max(50), timeoutMs: z.number().int().min(0).max(MAX_WAIT_MS).describe('Custom wait in milliseconds, 0–3600000 (60 minutes). Choose based on the estimated task duration; returns early on completion or input.') }),
   pi_ack: z.object({ completionIds: z.array(z.string().uuid()).min(1).max(100) }),
   pi_panel: z.object({}),
   pi_poll: z.object({ cursor: z.string().optional(), waitMs: z.number().int().min(0).max(25_000).default(20_000) }),

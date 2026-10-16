@@ -1,9 +1,11 @@
 export type Status = 'queued' | 'starting' | 'running' | 'waiting_input' | 'completed' | 'failed' | 'stopped' | 'interrupted';
 export const ACTIVE = new Set<Status>(['queued', 'starting', 'running', 'waiting_input']);
 export interface ModelChoice { provider: string; id: string; thinking?: string }
+export interface ToolCall { id: string; name: string; arguments: string }
 export interface Message {
   id: string; runId: string; role: string; text: string; complete: boolean;
-  timestamp: number; toolName?: string; error?: string;
+  timestamp: number; toolName?: string; toolCallId?: string; toolCalls?: ToolCall[];
+  command?: string; isError?: boolean; error?: string;
 }
 export interface Dialog {
   id: string; method: 'select' | 'confirm' | 'input' | 'editor'; title?: string;
@@ -14,6 +16,10 @@ export interface Agent {
   id: string; threadId: string; name: string; cwd: string; status: Status;
   runId: string; task: string; context?: string; model?: ModelChoice;
   sessionFile?: string; createdAt: number; startedAt?: number; finishedAt?: number;
+  /** Total retained messages. Poll snapshots window `messages` to the newest few, so this reports the unwindowed count. */
+  messageTotal?: number;
+  /** Current run's persisted completion text, included in completed panel snapshots. */
+  finalText?: string;
   activity: string; error?: string; messages: Message[]; tokens: number;
   toolUses: number; dialogs: Dialog[]; queued: Array<{message: string; mode: 'steer' | 'followUp'}>;
   pendingMessages: number; notified?: boolean;

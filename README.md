@@ -51,8 +51,9 @@ want the desktop to discover the isolated installation.
 
 Ask Codex: “Use a Pi agent to inspect the authentication module. Give it the
 relevant context, then continue working here.” The bundled skill teaches Codex
-the workflow. You can inspect messages, send steering/follow-up instructions,
-answer Pi extension dialogs, and stop agents in the panel.
+the workflow. The panel is read-only: inspect summaries and expand execution
+history there. Codex sends instructions, answers Pi extension dialogs and stops
+agents through tools in the parent chat; there are no panel input forms.
 
 | Tool | Purpose |
 |---|---|
@@ -61,12 +62,27 @@ answer Pi extension dialogs, and stop agents in the panel.
 | `pi_read` | Latest N messages (default 5, maximum 200), optional tools/partial text, `before` pagination |
 | `pi_send` | Steer, queue `followUp`, or resume the same conversation |
 | `pi_stop` | Interrupt execution, preserve history |
-| `pi_wait` | Wait at most 60 seconds for completion or input |
+| `pi_wait` | Required custom `timeoutMs`, 0–3,600,000 (60 minutes); returns early on completion or input |
 | `pi_ack` | Acknowledge completion IDs after the parent reads their results |
+| `pi_reply` | Parent-chat response to a Pi extension input, selection or confirmation request |
 
-`pi_panel`, `pi_poll`, `pi_reply`, and `pi_models` support the UI. The latter three
-are app-only. `?demo=1` on the development page shows **labeled simulated data**;
+`pi_panel`, `pi_poll`, and `pi_models` support the UI; the latter two are app-only.
+Mutation tools are model-only. Completed tasks open on their final Markdown
+summary; expand the **用时** disclosure to inspect calls and messages with history paging.
+`?demo=1` on the development page shows **labeled simulated data**;
 it does not launch agents or prove the Codex host integration.
+
+Before starting or resuming a Pi task, Codex estimates its duration and shares a
+rough range. It chooses `pi_wait.timeoutMs` accordingly (for example, `600000`
+for an estimated 5–10 minute task). The duration is a ceiling: an earlier result
+ends the wait immediately and completion hooks deliver it at the next safe point.
+Timeouts leave the task running. The plugin's MCP timeout includes the full hour;
+hosts may enforce their own shorter limits.
+
+User and assistant messages render Markdown, including tables, task lists, fenced
+code, quotes and links. Commands and tool output remain literal and collapsible.
+Raw HTML is disabled; Markdown images are links instead of automatic downloads.
+Preview formatting at `/?demo=1&markdown=1` on the development server.
 
 Only `agent_settled` ends a run. Accepted prompts, `agent_end`, retries, and
 compaction do not. A completed conversation can be resumed with another message;
