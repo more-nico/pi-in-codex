@@ -1,0 +1,47 @@
+# Dependencies, generated bundles, release archives and test output
+node_modules/
+dist/
+release/
+coverage/
+*.tsbuildinfo
+*.tgz
+*.zip
+*.tar
+*.tar.gz
+
+# Local credentials and agent configuration (keep .codex-plugin/ and .mcp.json)
+.env
+.env.*
+.npmrc
+.netrc
+.pi/
+.codex/
+.agents/
+auth.json
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Pi transcripts, daemon state, sockets and installation-specific paths
+/pi_in_codex/
+/sessions/
+*.jsonl
+state.json
+state.*.tmp
+*.sock
+*.sock.lock
+*.pid
+/.pi-in-codex-install.json
+/node-path
+
+# Local diagnostics, editors and operating-system metadata
+*.log
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

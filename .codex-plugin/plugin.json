@@ -1,0 +1,6 @@
+{
+  "name": "pi-in-codex", "version": "0.1.0", "license": "MIT",
+  "description": "Manage independent Pi child conversations inside the current Codex chat.",
+  "skills": "./skills/", "mcpServers": "./.mcp.json", "hooks": "./hooks/hooks.json",
+  "interface": { "displayName": "Pi in Codex", "shortDescription": "Conversation-scoped Pi agents", "iconSmall": "./assets/icon.svg" }
+}

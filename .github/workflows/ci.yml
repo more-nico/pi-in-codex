@@ -1,0 +1,21 @@
+name: Check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run pack:plugin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-in-codex-macos-node-${{ matrix.node }}
+          path: release/pi-in-codex-0.1.0-macos.zip
