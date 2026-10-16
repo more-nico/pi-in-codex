@@ -12,7 +12,7 @@ const invocation = (id = 'call'): Message => ({
 const result = (id = 'call', text = 'FIRST_OUTPUT'): Message => ({
   id: 'result', runId: 'run', role: 'toolResult', toolCallId: id, toolName: 'read', text, complete: true, timestamp: 1,
 });
-const render = (messages: Message[]) => renderToStaticMarkup(React.createElement(Transcript, { messages }));
+const render = (messages: Message[]) => renderToStaticMarkup(React.createElement(Transcript, { messages, defaultExpanded: true }));
 const rows = (html: string) => html.match(/<details\b[\s\S]*?<\/details>/g) || [];
 
 test('an invocation and result render once with both arguments and output inside the row', () => {
@@ -74,4 +74,17 @@ test('failed output stays on the paired row and untrusted output is literal text
   assert.match(html, /tone-danger/); assert.match(html, /失败 ·/);
   assert.match(html, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>/);
+});
+
+test('collapsed tools do not mount parameters or output, including very large results', () => {
+  const html = renderToStaticMarkup(React.createElement(Transcript, { messages: [invocation(), result('call', 'HIDDEN_DETAIL'.repeat(100_000))] }));
+  assert.equal(rows(html).length, 1);
+  assert.doesNotMatch(html, /disclosure-body|调用参数|执行结果|HIDDEN_DETAIL|<pre>/);
+  assert.ok(html.length < 2000, 'collapsed markup must not grow with the result body');
+});
+
+test('expanded large messages render a bounded page with an explicit continuation control', () => {
+  const html = renderToStaticMarkup(React.createElement(Transcript, { messages: [invocation(), { ...result('call', 'X'.repeat(8000)), textTotal: 1_000_000 }], agentId: 'agent', defaultExpanded: true }));
+  assert.match(html, /继续阅读/); assert.match(html, /1000000/);
+  assert.ok(html.length < 12_000);
 });

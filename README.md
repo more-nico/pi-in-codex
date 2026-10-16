@@ -302,6 +302,12 @@ history as needed.
 - The **子对话** task list in the top-right corner expands, collapses, and can be
   pinned as a floating overlay that stays up while you switch tasks.
 
+The current source includes an unreleased performance update: panel refreshes
+coalesce to about four per second, unchanged messages are reused, and collapsed
+details mount on demand. Long content starts with an 8,000-character preview;
+explicit reading uses 16,000-character pages while preserving the full original.
+These changes do not throttle parent-chat completion delivery.
+
 ## Documentation
 
 | Document | Contents |

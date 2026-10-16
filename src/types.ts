@@ -7,6 +7,8 @@ export interface Message {
   id: string; runId: string; role: string; text: string; complete: boolean;
   timestamp: number; toolName?: string; toolCallId?: string; toolCalls?: ToolCall[];
   command?: string; isError?: boolean; error?: string;
+  /** Panel-only preview/page metadata; the persisted message remains complete. */
+  textTotal?: number; textOffset?: number;
 }
 export interface Dialog {
   id: string; method: 'select' | 'confirm' | 'input' | 'editor'; title?: string;
@@ -21,6 +23,9 @@ export interface Agent {
   messageTotal?: number;
   /** Current run's persisted completion text, included in completed panel snapshots. */
   finalText?: string;
+  finalTextTotal?: number; completionId?: string;
+  /** Ordered newest-window IDs for the opt-in message-delta panel transport. */
+  messageIds?: string[];
   activity: string; error?: string; messages: Message[]; tokens: number;
   toolUses: number; dialogs: Dialog[]; queued: Array<{message: string; mode: 'steer' | 'followUp'}>;
   pendingMessages: number; notified?: boolean;

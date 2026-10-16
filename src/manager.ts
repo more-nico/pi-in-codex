@@ -12,6 +12,7 @@ import { validateWaitTimeout } from './wait.js';
 import { ACTIVE, type Agent, type Completion, type MailEvent, type Message, type Parent, type PiRecord, type SpawnInput, type ToolCall } from './types.js';
 import { profiles } from './profiles.js';
 import { PanelPresence } from './panel.js';
+import { PanelFeed, PANEL_INTERVAL_MS, pausePanel, previewMessage } from './panel-feed.js';
 
 export interface ManagerOptions { executable?: string; prefixArgs?: string[]; maxConcurrent?: number; maxPerThread?: number; idleMs?: number; extraArgs?: string[]; extensionPath?: string }
 export interface WaitOptions { runIds?: Record<string, string>; afterCursor?: string; mode?: 'any' | 'all'; wakeOnMessages?: boolean }
@@ -38,6 +39,8 @@ export class Manager extends EventEmitter {
   private idle = new Map<string, NodeJS.Timeout>();
   private revisions = new Map<string, number>();
   private agentRevisions = new Map<string, number>();
+  private panelFeed = new PanelFeed();
+  private panelSentAt = new Map<string, number>();
   private locks = new Map<string, Promise<unknown>>();
   private saveTimer?: NodeJS.Timeout;
   private stopping = false;
@@ -167,23 +170,43 @@ export class Manager extends EventEmitter {
       pendingCompletions: this.store.data.completions.filter(result => result.threadId === threadId && !result.acknowledged).length,
     };
   }
-  async poll(threadId: string, cursor?: string, waitMs = 20_000, signal?: AbortSignal, panelId?: string) {
+  private async waitForChange(threadId: string, cursor: string | undefined, waitMs: number, signal?: AbortSignal) {
+    if (cursor === this.cursor(threadId) && waitMs > 0 && !signal?.aborted) await new Promise<void>(resolve => {
+      const finish = () => { clearTimeout(timer); this.off('change', onChange); signal?.removeEventListener('abort', finish); resolve(); };
+      const onChange = (changed: string) => { if (threadId === changed) finish(); };
+      const timer = setTimeout(finish, Math.min(25_000, waitMs));
+      this.on('change', onChange); signal?.addEventListener('abort', finish, { once: true });
+      if (cursor !== this.cursor(threadId) || signal?.aborted) finish();
+    });
+  }
+  async poll(threadId: string, cursor?: string, waitMs = 20_000, signal?: AbortSignal, panelId?: string, transportVersion?: number) {
     this.assertParent(threadId);
     const finishPresence = this.panels.poll(threadId, panelId);
     try {
-      if (cursor === this.cursor(threadId) && waitMs > 0 && !signal?.aborted) await new Promise<void>(resolve => {
-        const finish = () => { clearTimeout(timer); this.off('change', onChange); signal?.removeEventListener('abort', finish); resolve(); };
-        const onChange = (changed: string) => { if (threadId === changed) finish(); };
-        const timer = setTimeout(finish, Math.min(25_000, waitMs));
-        this.on('change', onChange); signal?.addEventListener('abort', finish, { once: true });
-        if (cursor !== this.cursor(threadId) || signal?.aborted) finish();
-      });
-      const snapshot = this.snapshot(threadId);
+      await this.waitForChange(threadId, cursor, waitMs, signal);
+      // Coalesce bursts across all instances in this chat. Internal waits use
+      // waitForChange directly, so completion/report delivery is never throttled.
+      while (!signal?.aborted) {
+        const remaining = (this.panelSentAt.get(threadId) || 0) + PANEL_INTERVAL_MS - Date.now();
+        if (remaining <= 0) break;
+        await pausePanel(remaining, signal);
+      }
+      if (signal?.aborted) return { cursor: this.cursor(threadId), full: false, agents: [], pendingCompletions: 0 };
+      this.panelSentAt.set(threadId, Date.now());
       const prefix = `${this.revisionEpoch}:`;
-      if (!cursor?.startsWith(prefix)) return snapshot;
-      const previous = Number(cursor.slice(prefix.length));
-      if (!Number.isSafeInteger(previous) || previous < 0 || previous > (this.revisions.get(threadId) || 0)) return snapshot;
-      return { ...snapshot, full: false, agents: snapshot.agents.filter(agent => (this.agentRevisions.get(agent.id) || 0) > previous) };
+      const revision = this.revisions.get(threadId) || 0;
+      const value = cursor?.startsWith(prefix) ? Number(cursor.slice(prefix.length)) : NaN;
+      const after = Number.isSafeInteger(value) && value >= 0 && value <= revision ? value : undefined;
+      if (transportVersion === 2) {
+        const agents = this.store.data.agents.filter(agent => agent.threadId === threadId && (after === undefined || (this.agentRevisions.get(agent.id) || 0) > after));
+        return { cursor: this.cursor(threadId), full: after === undefined, transportVersion: 2,
+          agents: agents.map(agent => ({ ...this.panelFeed.agent(agent, revision, after,
+            agent.status === 'completed' ? this.store.data.completions.findLast(result => result.agentId === agent.id && result.runId === agent.runId) : undefined), ...this.queueInfo(agent) })),
+          pendingCompletions: this.store.data.completions.filter(result => result.threadId === threadId && !result.acknowledged).length };
+      }
+      // Older installed panels still understand the original full-window shape.
+      const snapshot = this.snapshot(threadId);
+      return after === undefined ? snapshot : { ...snapshot, full: false, agents: snapshot.agents.filter(agent => (this.agentRevisions.get(agent.id) || 0) > after) };
     } finally { finishPresence(!!signal?.aborted); }
   }
   async spawn(threadId: string, input: SpawnInput) {
@@ -322,9 +345,14 @@ export class Manager extends EventEmitter {
       case 'message_update': {
         const update = event.assistantMessageEvent || {};
         if (update.type === 'text_delta') {
+          if (!update.delta) return;
           if (!agent.messages.at(-1) || agent.messages.at(-1)!.complete || agent.messages.at(-1)!.role !== 'assistant') this.message(agent, { role: 'assistant', content: [] }, false);
-          agent.messages.at(-1)!.text += update.delta || ''; agent.activity = 'responding';
-        } else if (update.type?.startsWith('thinking')) agent.activity = 'thinking';
+          const index = agent.messages.length - 1, current = agent.messages[index];
+          agent.messages[index] = { ...current, text: current.text + update.delta }; agent.activity = 'responding';
+        } else if (update.type?.startsWith('thinking')) {
+          if (agent.activity === 'thinking') return;
+          agent.activity = 'thinking';
+        } else return; // Tool argument fragments have no visible panel change.
         break;
       }
       case 'message_end': this.message(agent, event.message, true); break;
@@ -335,7 +363,11 @@ export class Manager extends EventEmitter {
       case 'auto_retry_start': agent.activity = `retrying (${event.attempt}/${event.maxAttempts})`; break;
       case 'auto_retry_end': agent.activity = event.success ? 'thinking' : 'retry failed'; break;
       case 'summarization_retry_scheduled': agent.activity = 'retrying compaction'; break;
-      case 'queue_update': agent.pendingMessages = (event.steering?.length || 0) + (event.followUp?.length || 0); break;
+      case 'queue_update': {
+        const pending = (event.steering?.length || 0) + (event.followUp?.length || 0);
+        if (agent.pendingMessages === pending) return;
+        agent.pendingMessages = pending; break;
+      }
       case 'extension_ui_request':
         if (['select', 'confirm', 'input', 'editor'].includes(event.method)) {
           agent.dialogs.push({ id: event.id, method: event.method, title: event.title, message: event.message, options: event.options,
@@ -361,8 +393,11 @@ export class Manager extends EventEmitter {
               const report = JSON.parse(text.slice('pi_in_codex_report:'.length));
               if (typeof report.message === 'string' && report.message.trim()) this.mail(agent, 'message', report.message);
             } catch { /* malformed child reports are data, not protocol commands */ }
-          } else agent.activity = text.slice(0, 250);
-        }
+          } else {
+            const activity = text.slice(0, 250); if (agent.activity === activity) return;
+            agent.activity = activity;
+          }
+        } else return;
         break;
       case 'agent_settled': {
         const generation = this.activeRuns.get(agent.id);
@@ -371,6 +406,7 @@ export class Manager extends EventEmitter {
         else this.completeSettled(agent, Boolean(event.aborted));
         return;
       }
+      default: return;
     }
     this.changed(agent.threadId, true, agent.id);
   }
@@ -436,12 +472,21 @@ export class Manager extends EventEmitter {
       return { agentId: agent.id, runId: agent.runId, status: agent.status, inboxCount: agent.inbox?.length || 0, started: false };
     });
   }
-  read(threadId: string, id: string, limit = 5, includeTools = false, includePartial = true, before?: string) {
+  read(threadId: string, id: string, limit = 5, includeTools = false, includePartial = true, before?: string,
+    options: { messageId?: string; preview?: boolean; offset?: number; maxChars?: number } = {}) {
     const agent = this.owned(threadId, id);
+    if (options.messageId) {
+      const message = agent.messages.find(item => item.id === options.messageId);
+      if (!message) throw new Error('Message not found in this conversation');
+      const offset = options.offset || 0, max = options.maxChars || 16_000;
+      return { agentId: agent.id, runId: agent.runId, status: agent.status,
+        messages: [{ ...message, text: message.text.slice(offset, offset + max), textTotal: message.text.length, textOffset: offset }], hasMore: offset + max < message.text.length };
+    }
     const end = before ? agent.messages.findIndex(message => message.id === before) : agent.messages.length;
     if (end < 0) throw new Error('Unknown message cursor');
     const eligible = agent.messages.slice(0, end).filter(message => (includeTools || ['user', 'assistant'].includes(message.role)) && (includePartial || message.complete));
-    return { agentId: agent.id, runId: agent.runId, status: agent.status, messages: eligible.slice(-limit), hasMore: eligible.length > limit, undeliveredMessages: agent.undelivered || [], inbox: agent.inbox || [] };
+    return { agentId: agent.id, runId: agent.runId, status: agent.status, messages: options.preview ? eligible.slice(-limit).map(previewMessage) : eligible.slice(-limit), hasMore: eligible.length > limit,
+      undeliveredMessages: options.preview ? [] : agent.undelivered || [], inbox: options.preview ? [] : agent.inbox || [] };
   }
   async interrupt(threadId: string, id: string) {
     const agent = this.owned(threadId, id), pi = this.processes.get(agent.id);
@@ -527,7 +572,7 @@ export class Manager extends EventEmitter {
     const deadline = Date.now() + timeoutMs;
     let revision = this.cursor(threadId), outcome = reason();
     while (!outcome && Date.now() < deadline && !signal?.aborted) {
-      await this.poll(threadId, revision, Math.min(25_000, deadline - Date.now()), signal);
+      await this.waitForChange(threadId, revision, Math.min(25_000, deadline - Date.now()), signal);
       revision = this.cursor(threadId); outcome = reason();
     }
     const pending = notices(), events = pending.slice(0, 20);

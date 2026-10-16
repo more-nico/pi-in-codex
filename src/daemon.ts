@@ -84,8 +84,8 @@ export async function dispatch(manager: Manager, request: Request, signal?: Abor
       return manager.list(threadId, args);
     }
     case 'pi_panel': return { ...manager.list(threadId), panel: manager.panels.request(threadId) };
-    case 'pi_poll': return manager.poll(threadId, args.cursor, args.waitMs, signal, args.panelId);
-    case 'pi_read': return manager.read(threadId, args.agentId, args.limit, args.includeTools, args.includePartial, args.before);
+    case 'pi_poll': return manager.poll(threadId, args.cursor, args.waitMs, signal, args.panelId, args.transportVersion);
+    case 'pi_read': return manager.read(threadId, args.agentId, args.limit, args.includeTools, args.includePartial, args.before, args);
     case 'pi_send': return manager.send(threadId, args.agentId, args.message, args.mode);
     case 'pi_message': return manager.messageParentToChild(threadId, args.agentId, args.message);
     case 'pi_follow_up': return manager.send(threadId, args.agentId, args.message, 'followUp');

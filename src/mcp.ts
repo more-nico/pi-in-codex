@@ -12,7 +12,7 @@ const panelWorkflow = ' After success, inspect result.panel.shouldOpen: when tru
 const descriptions: Record<ToolName, string> = {
   pi_spawn: 'Before starting a Pi child, estimate its task duration and tell the user the approximate range. Start an independent child for this chat with explicit context. Returns immediately. Pi uses its own permissions and credentials.',
   pi_list: 'List Pi child conversations belonging to this Codex chat only, with current status.',
-  pi_read: 'Read the latest N user/assistant messages of one Pi child in chronological order. Tool messages and incomplete replies are optional.',
+  pi_read: 'Read the latest N user/assistant messages of one Pi child in chronological order. Tool messages and incomplete replies are optional. messageId selects one exact message for offset/maxChars text paging; preview provides clipped text for panel history. Stored history remains complete.',
   pi_send: 'Send a new instruction to a Pi child. Before resuming a settled child, estimate and share its task duration. Steer an active run, queue followUp, or resume a completed/stopped/failed conversation.',
   pi_message: 'Send information without starting an idle child. Running children receive steering; idle children retain it in an inbox until an explicit pi_follow_up/pi_send. Supports an idempotent requestId.',
   pi_follow_up: 'Assign another task to an existing child, starting it if idle or queuing followUp if active. Estimate and share its duration before resuming. Supports an idempotent requestId.',
@@ -46,6 +46,7 @@ export function createMcpServer() {
       try {
         const threadId = resolveThread(extra._meta); await ensureDaemon();
         const result = await request(name, threadId, args, undefined, extra.signal);
+        if (name === 'pi_poll') return { content: [], structuredContent: result };
         return { content: [{ type: 'text' as const, text: JSON.stringify(result) }], structuredContent: result };
       } catch (error) { return { isError: true, content: [{ type: 'text' as const, text: errorText(error) }] }; }
     });

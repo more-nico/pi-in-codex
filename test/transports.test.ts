@@ -74,6 +74,15 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   const waited = jsonResult(await client.callTool({ name: 'pi_wait', arguments: { agentIds: [child.agentId], timeoutMs: MAX_WAIT_MS }, _meta: metadata('chat-a') }, undefined, { timeout: MAX_WAIT_MS + 20_000 }));
   assert.ok(Date.now() - waitStarted < 5000, 'An hour-long wait must finish early when the child settles');
   assert.equal(waited.agents[0].status, 'completed');
+  const panel = await client.callTool({ name: 'pi_poll', arguments: { transportVersion: 2, waitMs: 0 }, _meta: metadata('chat-a') });
+  assert.deepEqual(panel.content, [], 'app-only polls must not duplicate their payload in text content');
+  const frame = jsonResult(panel);
+  assert.equal(frame.transportVersion, 2); assert.equal(frame.full, true);
+  const last = frame.agents[0].messages.at(-1);
+  const page = jsonResult(await client.callTool({ name: 'pi_read', arguments: { agentId: child.agentId, messageId: last.id, offset: 1, maxChars: 3 }, _meta: metadata('chat-a') }));
+  assert.equal(page.messages[0].text, last.text.slice(1, 4));
+  const deniedPage = await client.callTool({ name: 'pi_read', arguments: { agentId: child.agentId, messageId: last.id }, _meta: metadata('chat-b') });
+  assert.equal(deniedPage.isError, true);
   const first = await hook('chat-a', 'Stop', 'turn-2'); assert.equal(first.decision, 'block'); assert.match(first.reason, /完成：你好/);
   assert.deepEqual(await hook('chat-a', 'Stop', 'turn-2'), {});
   assert.deepEqual(await hook('chat-b', 'UserPromptSubmit', 'turn-3'), {});

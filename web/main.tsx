@@ -1,9 +1,10 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Agent, Message } from '../src/types.js';
 import { call, connect, demo } from './bridge.js';
 import { activityLabel, compactTokens, elapsed, statusLabel } from './format.js';
-import { MarkdownText } from './markdown.js';
+import { MessageContent } from './content.js';
+import { PANEL_INTERVAL_MS, pausePanel } from '../src/panel-feed.js';
 import { BrandMark } from './brand.js';
 import { selectAgent } from './selection.js';
 import { completedProcessMessages, completedSummary, hasEarlierMessages, mergeAgents, mergeOlder, MESSAGE_PAGE, recentMessages, visibleMessages } from './messages.js';
@@ -11,6 +12,7 @@ import { Transcript } from './transcript.js';
 import './style.css';
 
 type PanelAgent = Agent & { messageTotal?: number };
+const EMPTY_MESSAGES: Message[] = [];
 const active = (agent: Agent) => ['queued', 'starting', 'running', 'waiting_input'].includes(agent.status);
 const finished = (agent: Agent) => agent.status === 'completed' || agent.status === 'failed';
 const nearTop = 80;
@@ -28,6 +30,10 @@ function PinIcon() {
 
 function Panel() {
   const [agents, setAgents] = useState<PanelAgent[]>([]), [selected, setSelected] = useState<string | undefined>(demo ? new URLSearchParams(location.search).has('completed') ? 'demo-done' : new URLSearchParams(location.search).has('markdown') ? 'demo-markdown' : undefined : undefined);
+  const agentsRef = useRef<PanelAgent[]>([]);
+  const updateAgents = (update: (previous: PanelAgent[]) => PanelAgent[]) => {
+    const next = update(agentsRef.current); agentsRef.current = next; setAgents(next);
+  };
   const [error, setError] = useState(''), [pending, setPending] = useState(0), [completedOpen, setCompletedOpen] = useState(false), [listOpen, setListOpen] = useState(false);
   const [listPinned, setListPinned] = useState(false);
   const [older, setOlder] = useState<Record<string, Message[]>>({}), [loadingOlder, setLoadingOlder] = useState(false);
@@ -47,8 +53,9 @@ function Panel() {
   const agent = agents.find(item => item.id === selected);
   const summaryOnly = agent?.status === 'completed' && processView !== `${agent.id}:${agent.runId}`;
   const inHistory = agent ? historyIds.includes(agent.id) : false;
-  const history = agent ? older[agent.id] || [] : [];
-  const visible = agent ? (inHistory ? visibleMessages(history, agent.messages) : recentMessages(agent.messages)) : [];
+  const history = agent ? older[agent.id] || EMPTY_MESSAGES : EMPTY_MESSAGES;
+  const visible = useMemo(() => agent ? (inHistory ? visibleMessages(history, agent.messages) : recentMessages(agent.messages)) : EMPTY_MESSAGES, [agent?.messages, history, inHistory]);
+  const processMessages = useMemo(() => agent && !summaryOnly ? completedProcessMessages(agent, visible) : EMPTY_MESSAGES, [agent?.id, agent?.runId, visible, summaryOnly]);
   const earlier = agent && !summaryOnly ? hasEarlierMessages(agent.messageTotal, visible.length) : false;
   useEffect(() => { const timer = setInterval(() => tick(value => value + 1), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => {
@@ -72,12 +79,17 @@ function Panel() {
         let cursor: string | undefined;
         while (!disposed) {
           try {
+            const started = performance.now();
             const snapshot = await call('pi_poll', { cursor, waitMs: cursor ? 20_000 : 0 }, controller.signal);
             if (disposed) return;
-            setAgents(previous => mergeAgents(previous, snapshot, id => historyRef.current.has(id)).filter(agent => !agent.archivedAt));
+            updateAgents(previous => {
+              const next = mergeAgents(previous, snapshot, id => historyRef.current.has(id));
+              return next.some(agent => agent.archivedAt) ? next.filter(agent => !agent.archivedAt) : next;
+            });
             setPending(snapshot.pendingCompletions || 0); cursor = snapshot.cursor;
             setError('');
-          } catch (e) { if (disposed) return; setError((e as Error).message); cursor = undefined; await new Promise(resolve => setTimeout(resolve, 2000)); }
+            await pausePanel(PANEL_INTERVAL_MS - (performance.now() - started), controller.signal);
+          } catch (e) { if (disposed) return; setError((e as Error).message); cursor = undefined; await pausePanel(2000, controller.signal); }
         }
       } catch (e) { if (!disposed) setError((e as Error).message); }
     })();
@@ -105,9 +117,10 @@ function Panel() {
   const choose = (id: string) => {
     if (id !== selectedRef.current) {
       // Switching conversations resets paging: leave history mode and show exactly the newest page.
-      leaveHistory(id);
-      setOlder(previous => (previous[id]?.length ? { ...previous, [id]: [] } : previous));
-      setAgents(previous => previous.map(item => item.id === id ? { ...item, messages: recentMessages(item.messages) } : item));
+      const reset = [id, selectedRef.current].filter((value): value is string => !!value);
+      for (const value of reset) leaveHistory(value);
+      setOlder(previous => Object.fromEntries(Object.entries(previous).map(([key, messages]) => [key, reset.includes(key) ? EMPTY_MESSAGES : messages])));
+      updateAgents(previous => previous.map(item => reset.includes(item.id) ? { ...item, messages: recentMessages(item.messages) } : item));
     }
     setSelected(id); setProcessView(undefined); if (!listPinned) setListOpen(false); setFollow(true); setLoadingOlder(false);
   };
@@ -120,7 +133,8 @@ function Panel() {
     enterHistory(current.id);
     setLoadingOlder(true); setFollow(false);
     try {
-      const page = await call('pi_read', { agentId: current.id, limit: MESSAGE_PAGE, includeTools: true, before });
+      const page = await call('pi_read', { agentId: current.id, limit: MESSAGE_PAGE, includeTools: true, before, preview: true });
+      if (selectedRef.current !== current.id || !historyRef.current.has(current.id)) return;
       const node = scroll.current;
       if (node && selectedRef.current === current.id) anchor.current = { agentId: current.id, height: node.scrollHeight, top: node.scrollTop };
       setOlder(previous => ({ ...previous, [current.id]: mergeOlder(previous[current.id] || [], page.messages || []) }));
@@ -173,15 +187,15 @@ function Panel() {
               <div className="process-body">
                 <div className="process-stats">{agent.toolUses} 次工具调用<span>·</span>{compactTokens(agent.tokens)} tokens</div>
                 {earlier && <button className="load-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? '正在加载更早消息…' : `↑ 加载更早的 ${MESSAGE_PAGE} 条`}</button>}
-                <Transcript messages={completedProcessMessages(agent, visible)} />
+                {!summaryOnly && <Transcript messages={processMessages} agentId={agent.id} />}
               </div>
             </div>
           </section>
-          <article className="message assistant task-summary"><MarkdownText text={completedSummary(agent)} /></article>
+          <article className="message assistant task-summary"><MessageContent key={`${agent.id}:${agent.runId}`} text={completedSummary(agent)} total={agent.finalTextTotal} source={agent.completionId ? { completionId: agent.completionId } : undefined} /></article>
         </> : <>
           {earlier && <button className="load-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? '正在加载更早消息…' : `↑ 加载更早的 ${MESSAGE_PAGE} 条`}</button>}
           {visible.length === 0 && <p className="no-messages">{agent.status === 'queued' ? '任务已排队，等待可用运行名额。' : '等待 Pi 的第一条消息…'}</p>}
-          <Transcript messages={visible} />
+          <Transcript messages={visible} agentId={agent.id} />
         </>}
         {agent.error && <p className="run-error">{agent.error}</p>}
         {!!agent.undelivered?.length && <div className="run-error">未确认送达的排队消息：{agent.undelivered.map((text, index) => <p key={index}>{text}</p>)}</div>}

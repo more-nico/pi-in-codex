@@ -28,6 +28,14 @@ function begin(command) {
   emit({ type: 'message_start', message: message('assistant', '', 'pending') });
   if (command.message === 'fast') { emit({ type: 'message_end', message: message('assistant', 'FAST_OK') }); emit({ type: 'agent_end', messages: [] }); running = false; emit({ type: 'agent_settled', aborted: false }); return; }
   if (command.message === 'hold') return;
+  if (command.message === 'noisy') {
+    for (let i = 0; i < 1000; i++) {
+      emit({ type: 'message_update', assistantMessageEvent: { type: 'toolcall_delta', delta: 'x' } });
+      emit({ type: 'message_update', assistantMessageEvent: { type: 'thinking_delta', delta: 'x' } });
+      emit({ type: 'queue_update', steering: [], followUp: [] });
+    }
+    finish('NOISE_OK'); return;
+  }
   if (command.message === 'report') { setTimeout(() => emit({ type: 'extension_ui_request', method: 'notify', message: 'pi_in_codex_report:' + JSON.stringify({ message: '发现需要协调的接口变更' }) }), 15); return; }
   if (command.message === 'long') { finish('完整结果✓'.repeat(5000)); return; }
   if (command.message === 'end-only') { emit({ type: 'agent_end', messages: [] }); return; }

@@ -54,9 +54,21 @@ export function mergeWindow(current: Message[], incoming: Message[]): Message[] 
 /** Apply a poll snapshot. Without paging, `messages` is always replaced by the newest window so the view stays at 50. Once the user asked for history, merge instead so nothing loaded is lost when the window slides. */
 export function mergeAgents(previous: Agent[], snapshot: { full?: boolean; agents?: Agent[] }, keepHistory: (id: string) => boolean = () => false): Agent[] {
   const incoming = snapshot.agents || [];
+  if (!snapshot.full && !incoming.length) return previous;
   const held = new Map(previous.map(agent => [agent.id, agent]));
   const apply = (agent: Agent) => {
     const current = held.get(agent.id);
+    if (agent.messageIds) {
+      const known = new Map(current?.messages.map(message => [message.id, message]));
+      for (const message of agent.messages) known.set(message.id, message);
+      const window = agent.messageIds.map(id => {
+        const message = known.get(id);
+        if (!message) throw new Error('消息缓存已过期，正在重新同步。');
+        return message;
+      });
+      const sameWindow = current?.messages.length === window.length && window.every((message, index) => current.messages[index] === message);
+      return { ...agent, messages: sameWindow ? current.messages : current && keepHistory(agent.id) ? mergeWindow(current.messages, window) : window };
+    }
     return current && keepHistory(agent.id) ? { ...agent, messages: mergeWindow(current.messages, agent.messages) } : agent;
   };
   const next = snapshot.full ? incoming.map(apply) : (() => {
@@ -69,7 +81,7 @@ export function mergeAgents(previous: Agent[], snapshot: { full?: boolean; agent
 
 /** The newest page shown while the user has not asked for history yet. */
 export function recentMessages(messages: Message[]): Message[] {
-  return messages.slice(-MESSAGE_PAGE);
+  return messages.length <= MESSAGE_PAGE ? messages : messages.slice(-MESSAGE_PAGE);
 }
 
 /** Prepend an older page, ignoring ids already held because pages overlap while the tail moves. */
@@ -126,7 +138,8 @@ export function compactLine(value: string, max = 96): string {
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 
-export function outputSummary(text: string): string {
+export function outputSummary(text: string, total = text.length): string {
+  if (total > text.length) return `${text.length}/${total} 字符`;
   if (!text) return '空输出';
   const lines = text.split('\n').length;
   return lines > 1 ? `${lines} 行` : `${text.length} 字符`;

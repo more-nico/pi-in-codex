@@ -201,3 +201,6 @@ main { height: 100dvh; min-height: 400px; display: flex; flex-direction: column;
 }
 
 .waiting-note { flex-shrink: 0; font-size: 11px; color: var(--warn); padding: 10px; margin: 0 0 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); overflow-wrap: anywhere }
+.content-pages { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; color: var(--muted); font-size: 12px }
+.content-pages button { background: transparent; color: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer }
+.disclosure-body .content-pages { position: sticky; bottom: -9px; margin-bottom: -9px; padding: 8px 0; background: var(--surface); border-top: 1px solid var(--border) }

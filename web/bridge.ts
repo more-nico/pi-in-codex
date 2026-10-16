@@ -1,6 +1,7 @@
 import { BUILD } from "../src/build.js";
 import { App } from '@modelcontextprotocol/ext-apps';
 import type { Agent, Message } from '../src/types.js';
+import { PanelFeed, previewMessage } from '../src/panel-feed.js';
 
 export const demo = new URLSearchParams(location.search).has('demo');
 let application: App | undefined;
@@ -16,7 +17,7 @@ export function connect(onContext: (context: any) => void) {
   return connection;
 }
 export async function call(name: string, args: Record<string, any> = {}, signal?: AbortSignal): Promise<any> {
-  if (name === 'pi_poll') args = { ...args, panelId };
+  if (name === 'pi_poll') args = { ...args, panelId, transportVersion: 2 };
   if (demo) return demoCall(name, args);
   if (!application || !connection) throw new Error('Panel is not connected to Codex');
   await connection;
@@ -89,15 +90,31 @@ if (demo && new URLSearchParams(location.search).has('failed')) sample.push({
   dialogs: [], queued: [], pendingMessages: 0,
   messages: [{ id: 'failed-1', runId: 'demo-failed-run', role: 'assistant', text: '', error: 'Connection error.', complete: true, timestamp: now - 10_000 }],
 });
+if (new URLSearchParams(location.search).has('performance')) sample.push({
+  id: 'demo-large', threadId: 'demo', name: '长日志负载验证', cwd: '/workspace/pi_in_codex', status: 'running', runId: 'demo-large-run',
+  task: '验证详情按需加载', activity: 'responding', createdAt: now - 1000, startedAt: now - 1000, tokens: 1000, toolUses: 1, dialogs: [], queued: [], pendingMessages: 0,
+  messages: [
+    { id: 'large-call', runId: 'demo-large-run', role: 'assistant', text: '日志已生成，展开后可分段阅读。', complete: true, timestamp: now,
+      toolCalls: [{ id: 'large-tool', name: 'bash', arguments: '{"command":"npm test"}' }] },
+    { id: 'large-result', runId: 'demo-large-run', role: 'toolResult', toolCallId: 'large-tool', toolName: 'bash', text: Array.from({ length: 10_000 }, (_, i) => `PERF_LOG_LINE ${i + 1}: passed\n`).join(''), complete: true, timestamp: now },
+  ],
+});
 let revision = 0;
 const changes = new Map<string, number>();
 const touch = (id: string) => { revision++; changes.set(id, revision); };
 const windowed = (agent: Agent) => ({ ...agent, messageTotal: agent.messages.length, messages: agent.messages.slice(-50).map(message => ({ ...message })) });
+const feed = new PanelFeed();
 const snapshot = () => ({ cursor: `demo:${revision}`, full: true, agents: sample.map(windowed), pendingCompletions: 1 });
 async function demoCall(name: string, args: any) {
   if (name === 'pi_poll') {
     const cursor = typeof args.cursor === 'string' ? args.cursor : '';
     if (cursor === `demo:${revision}`) await new Promise(resolve => setTimeout(resolve, 1000));
+    if (args.transportVersion === 2) {
+      const value = cursor.startsWith('demo:') ? Number(cursor.slice(5)) : NaN;
+      const after = Number.isSafeInteger(value) && value >= 0 && value <= revision ? value : undefined;
+      return { cursor: `demo:${revision}`, full: after === undefined, transportVersion: 2, pendingCompletions: 1,
+        agents: sample.filter(agent => after === undefined || (changes.get(agent.id) || 0) > after).map(agent => feed.agent(agent, revision, after)) };
+    }
     if (!cursor.startsWith('demo:')) return snapshot();
     const previous = Number(cursor.slice('demo:'.length));
     if (!Number.isSafeInteger(previous) || previous < 0 || previous > revision) return snapshot();
@@ -106,11 +123,17 @@ async function demoCall(name: string, args: any) {
   if (name === 'pi_read') {
     const agent = sample.find(item => item.id === args.agentId);
     if (!agent) return { messages: [], hasMore: false };
+    if (args.messageId) {
+      const message = agent.messages.find(message => message.id === args.messageId);
+      if (!message) throw new Error('Message not found');
+      const offset = args.offset || 0, max = args.maxChars || 16_000;
+      return { messages: [{ ...message, text: message.text.slice(offset, offset + max), textTotal: message.text.length, textOffset: offset }] };
+    }
     const limit = Number(args.limit) || 50;
     const end = args.before ? agent.messages.findIndex(message => message.id === args.before) : agent.messages.length;
     if (end < 0) return { messages: [], hasMore: false };
     const eligible = agent.messages.slice(0, end);
-    return { messages: eligible.slice(-limit).map(message => ({ ...message })), hasMore: eligible.length > limit };
+    return { messages: eligible.slice(-limit).map(message => args.preview ? previewMessage(message) : { ...message }), hasMore: eligible.length > limit };
   }
   if (name === 'pi_send') {
     const agent = sample.find(item => item.id === args.agentId)!;
