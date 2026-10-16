@@ -119,8 +119,14 @@ test('isolated install uses marketplace-root paths, retains other plugins, and r
   assert.equal(destination, join(home, 'plugins/pi-in-codex'));
   assert.equal(entry.policy.installation, 'AVAILABLE');
   await access(join(destination, 'dist/DEPENDENCY_NOTICES.txt')); await access(`${marketplace}.pi-in-codex-backup`);
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const entry of manifest.files) await access(join(destination, entry));
+  for (const doc of ['SUBAGENT_PARITY.md', 'INTERFACE.md', 'VALIDATION.md', 'plugin-intro.html', 'panel-preview.png']) await access(join(destination, 'docs', doc));
+  assert.equal(JSON.parse(await readFile(join(destination, 'package.json'), 'utf8')).version, manifest.version);
   const report = JSON.parse((await execute([join(destination, 'dist/cli.mjs'), 'doctor'], env)).stdout);
   assert.ok(report.piVersion);
+  assert.equal(report.build.version, manifest.version);
+  assert.match(report.build.buildId, /^[a-f0-9]{64}$/);
   await execute([cli, 'install', '--codex-home', home], env);
   const updated = JSON.parse(await readFile(marketplace, 'utf8')); assert.equal(updated.plugins.filter((plugin: any) => plugin.name === 'pi-in-codex').length, 1);
   await execute([cli, 'uninstall', '--codex-home', home], env);

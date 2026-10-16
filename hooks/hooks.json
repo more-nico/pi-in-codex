@@ -1,9 +1,9 @@
 {
   "description": "Register the current Codex conversation and deliver completed Pi results at safe points.",
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 25, "additionalContextLimit": 16000 }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 25, "additionalContextLimit": 16000 }] }],
-    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 25, "additionalContextLimit": 16000 }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 25 }] }]
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 90, "additionalContextLimit": 16000 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 90, "additionalContextLimit": 16000 }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 90, "additionalContextLimit": 16000 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/bin/sh \"${PLUGIN_ROOT}/scripts/launch.sh\" hook", "timeout": 90 }] }]
   }
 }

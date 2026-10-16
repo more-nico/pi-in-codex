@@ -1,3 +1,4 @@
+import { BUILD } from "../src/build.js";
 import { App } from '@modelcontextprotocol/ext-apps';
 import type { Agent, Message } from '../src/types.js';
 
@@ -8,7 +9,7 @@ const panelId = crypto.randomUUID();
 export function connect(onContext: (context: any) => void) {
   if (demo) { const requestedTheme = new URLSearchParams(location.search).get('theme'); onContext({ theme: requestedTheme === 'dark' || requestedTheme === 'light' ? requestedTheme : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' }); return Promise.resolve(); }
   if (!connection) {
-    application = new App({ name: 'pi-in-codex-panel', version: '0.1.0' }, {}, { autoResize: false });
+    application = new App({ name: 'pi-in-codex-panel', version: BUILD.version }, {}, { autoResize: false });
     application.onhostcontextchanged = onContext;
     connection = application.connect().then(() => { onContext(application!.getHostContext() || {}); }).catch(error => { connection = undefined; application = undefined; throw error; });
   }

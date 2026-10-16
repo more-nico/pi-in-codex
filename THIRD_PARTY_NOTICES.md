@@ -33,15 +33,29 @@ Pi itself is an external, separately installed MIT-licensed runtime.
 
 ## Brand assets
 
-`assets/pi-in-codex.svg` combines the monochrome Pi silhouette, an original
-pixel-grid lowercase n, and the colored Codex mark without its rounded-square background. Pi proportions are based
-on the [official Pi press kit](https://pi.dev/press-kit) (`logo-auto.svg`).
-The Codex path is from [Lobe Icons](https://github.com/lobehub/lobe-icons),
-retrieved via [this SVG mirror](https://asvg.app/assets/svg/codex/codex-symbol-color.svg).
-Pi and Codex trademark rights belong to their respective owners and are not
-granted by this project's MIT code license. This is an independent integration.
+`assets/pi-in-codex.svg` uses a monochrome Pi silhouette based on the
+[official Pi press kit](https://pi.dev/press-kit) (`logo-auto.svg`). The Pi site
+identifies its material as MIT licensed; copyright belongs to Earendil Inc.
+and contributors (Copyright (c) Earendil Inc. & Contributors). The MIT
+permission and warranty text printed above applies to this adaptation as well.
+The lowercase n, purple pixel terminal symbol, and `assets/icon.svg` are
+original project artwork under this project's MIT license. The terminal symbol
+is not the Codex logo.
 
-Lobe Icons license follows:
+This is an independent community integration, not an official Pi or OpenAI
+product. Pi and Codex names and trademarks remain the property of their owners;
+the MIT copyright license does not grant trademark rights. OpenAI's
+[brand guidelines](https://openai.com/brand/) prohibit incorporating its logos
+into a project's own branding. Starting with 0.1.1, no OpenAI/Codex logo is
+included in the current project artwork.
+
+Earlier source revisions (0.1.0) used a Codex path from
+[Lobe Icons](https://github.com/lobehub/lobe-icons), retrieved via
+[this SVG mirror](https://asvg.app/assets/svg/codex/codex-symbol-color.svg).
+Its [MIT license](https://github.com/lobehub/lobe-icons/blob/master/LICENSE)
+is retained below for those revisions; it does not grant trademark permission.
+
+Lobe Icons license (historical artwork):
 
 MIT License
 

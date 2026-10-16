@@ -1,9 +1,17 @@
 {
   "name": "pi-in-codex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Conversation-scoped Pi agents in the Codex desktop side panel",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/more-nico/pi-in-codex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/more-nico/pi-in-codex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/more-nico/pi-in-codex/issues"
+  },
   "engines": {
     "node": ">=22.19.0"
   },
@@ -19,6 +27,12 @@
     "hooks",
     "skills",
     "assets",
+    "docs/INTERFACE.md",
+    "docs/SUBAGENT_PARITY.md",
+    "docs/VALIDATION.md",
+    "docs/plugin-intro.html",
+    "docs/panel-preview.png",
+    "package.json",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",

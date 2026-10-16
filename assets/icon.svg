@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="#eaf1e9"/><path d="M14 22h37v6h-8v19c0 3 2 4 5 3v5c-8 2-12-1-12-8V28H26l-2 26h-7l3-26h-6z" fill="#3c6650"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Pi in Codex</title>
+  <rect width="64" height="64" rx="14" fill="#f2f2f2"/>
+  <path d="M12 14h30v8H12zm4 8h8v28h-8zm18 0h8v28h-8z" fill="#222"/>
+  <path d="M46 42h8v8h-8z" fill="#7770ed"/>
+</svg>

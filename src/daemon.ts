@@ -9,6 +9,10 @@ import { JsonLines } from './jsonl.js';
 import { dataRoot, socketPath, errorText } from './config.js';
 import { schemas, type ToolName } from './schemas.js';
 import type { Request } from './types.js';
+import { randomUUID } from 'node:crypto';
+import { BUILD } from './build.js';
+
+const identity = { ...BUILD, pid: process.pid, instanceId: randomUUID() };
 
 export async function runDaemon() {
   const root = dataRoot(), path = socketPath(root);
@@ -31,7 +35,15 @@ export async function runDaemon() {
       socket.on('close', () => abort.abort()); socket.on('error', () => {});
       const decoder = new JsonLines(async (request: Request) => {
         if (received) return; received = true;
-        try { const result = await dispatch(service, request, abort.signal); if (!socket.destroyed) socket.end(JSON.stringify({ id: request.id, result }) + '\n'); }
+        try {
+          if (request.method === 'daemon_shutdown') {
+            if (!shutdown) throw new Error('Daemon is still starting; retry');
+            if (request.args?.instanceId !== identity.instanceId) throw new Error('Daemon instance changed; retry');
+            socket.end(JSON.stringify({ id: request.id, result: { stopping: true } }) + '\n');
+            void shutdown!(); return;
+          }
+          const result = await dispatch(service, request, abort.signal); if (!socket.destroyed) socket.end(JSON.stringify({ id: request.id, result }) + '\n');
+        }
         catch (error) { if (!socket.destroyed) socket.end(JSON.stringify({ id: request.id, error: errorText(error) }) + '\n'); }
       }, error => socket.destroy(error));
       socket.on('data', chunk => decoder.push(chunk));
@@ -50,7 +62,7 @@ export async function runDaemon() {
 }
 
 export async function dispatch(manager: Manager, request: Request, signal?: AbortSignal): Promise<any> {
-  if (request.method === 'ping') return { version: '0.1.0', pid: process.pid };
+  if (request.method === 'ping') return identity;
   const threadId = request.threadId;
   if (typeof threadId !== 'string' || !threadId.trim()) throw new Error('A conversation ID is required');
   if (request.method === 'hook_register') {

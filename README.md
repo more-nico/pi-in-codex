@@ -31,7 +31,9 @@ does not copy the parent transcript and it does not inherit the Codex sandbox.
 Two chats in the same project get separate agents. These are not Codex native
 subagents.
 
-<!-- TODO: screenshot — panel with a settled agent and its collapsed run history. -->
+![Read-only Pi panel in light and dark themes (demo data)](docs/panel-preview.png)
+
+*Preview with simulated data; the panel is read-only.*
 
 ## What it can do
 
@@ -56,19 +58,33 @@ this **plugin** with its hooks trusted.
 | Host | macOS. Codex desktop with MCP Apps conversation panels, per-call thread metadata and trusted plugin hooks. Development baseline: Codex `26.1013.31256`. |
 | Agent runtime | Pi **1.2.0+**, installed and configured with your own model credentials. |
 | Node.js | **22.19+** (the installer records the Node path it uses). |
-| Distribution | Install from this local source tree or an unzipped release bundle; this file documents no download link. |
+| Distribution | [Source repository](https://github.com/more-nico/pi-in-codex) or a prebuilt macOS bundle from [Releases](https://github.com/more-nico/pi-in-codex/releases). |
 
 ### 1. Install from source
 
 ```sh
+git clone https://github.com/more-nico/pi-in-codex.git
+cd pi-in-codex
 npm ci
 npm run check
 node bin/pi-in-codex.mjs doctor
 node bin/pi-in-codex.mjs install
 ```
 
-Unzipped a release bundle? Run `node bin/pi-in-codex.mjs install` inside that
-folder instead; it carries its own dependencies but still uses your Node and Pi.
+For a prebuilt bundle, download `pi-in-codex-0.1.1-macos.zip` and `SHA256SUMS`
+from [v0.1.1](https://github.com/more-nico/pi-in-codex/releases/tag/v0.1.1).
+Keep both files in the same directory, then run:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+unzip pi-in-codex-0.1.1-macos.zip
+cd pi-in-codex
+node bin/pi-in-codex.mjs doctor
+node bin/pi-in-codex.mjs install
+```
+
+The bundle includes its dependencies and documentation; it still needs your
+Node and Pi installs. No `npm ci` or build step is needed for the bundle.
 
 The installer copies the bundle to `~/.codex/plugins/pi-in-codex`, merges its entry
 into `~/.agents/plugins/marketplace.json`, and backs that catalog up first. Always
@@ -86,7 +102,7 @@ node bin/pi-in-codex.mjs install --codex-home /absolute/test-codex-home
 
 Its catalog lives at `/absolute/test-codex-home/.agents/plugins/marketplace.json`.
 Add that root as a local plugin source in the desktop app if you want it to appear
-there, and use the same `--codex-home` to uninstall it. Use the same `--codex-home` to uninstall it.
+there, and use the same `--codex-home` to uninstall it.
 
 </details>
 
@@ -268,7 +284,10 @@ Uninstall removes only the marked plugin directory and its catalog entry and
 preserves transcripts. Use the same `--codex-home` when uninstalling an isolated
 installation. Daemon diagnostics are in `daemon.log` inside the data directory.
 Reinstalling to upgrade stops the old daemon and interrupts active runs, so
-settle or stop your agents first.
+settle or stop your agents first. The installer waits for actual shutdown before
+replacing files. Clients compare build fingerprints, restart older daemons, and
+refuse to downgrade a newer daemon. Restart Codex after upgrading so cached
+clients refresh. `doctor` reports both build identities and compatibility.
 
 ## The panel
 
@@ -312,7 +331,7 @@ exercise real stdio, Unix-socket and MCP transports against a deterministic fake
 Pi. Live provider smoke tests stay separate because they use your model
 subscription, and panel mounting, hook trust and two-window routing must be
 checked in the installed desktop host. The plugin ZIP is written under
-`release/` (currently `pi-in-codex-0.1.0-macos.zip`).
+`release/` (currently `pi-in-codex-0.1.1-macos.zip`).
 
 See `dist/DEPENDENCY_NOTICES.txt` and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 for retained license notices.
@@ -320,6 +339,11 @@ for retained license notices.
 ## License
 
 MIT. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+This is an independent community project, not affiliated with or endorsed by
+OpenAI or Earendil. Product names and trademarks belong to their owners; the
+MIT license does not grant trademark rights. The purple terminal artwork is
+original project artwork, not the Codex logo.
+
 No OpenAI desktop application code is included. Plugins that ship hooks currently
 use manual installation rather than the public plugin directory; see
 [official packaging documentation](https://developers.openai.com/plugins/build/plugins).

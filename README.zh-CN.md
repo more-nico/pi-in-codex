@@ -29,7 +29,9 @@
 上下文，也不继承 Codex 沙箱。同一项目中的不同聊天分别管理各自的子对话。
 这些不是 Codex 原生子代理。
 
-<!-- TODO: 截图 — 面板中已完成任务的总结与折叠的执行过程。 -->
+![Pi 只读面板的深浅主题（演示数据）](docs/panel-preview.png)
+
+*截图使用模拟数据，面板只读。*
 
 ## 能做什么
 
@@ -54,19 +56,31 @@ hooks 已被信任）。
 | 宿主 | macOS。支持 MCP Apps 会话面板、逐次调用 thread 元数据与可信插件 hooks 的 Codex 桌面客户端；开发基准 Codex `26.1013.31256`。 |
 | 运行环境 | pi **1.2.0+**，已安装并用你自己的模型认证配置好。 |
 | Node.js | **22.19+**（安装器会记录它使用的 Node 路径）。 |
-| 分发方式 | 从本地源码或解压的发布包安装；本文件不提供下载地址。 |
+| 分发方式 | 从 [GitHub 源码](https://github.com/more-nico/pi-in-codex)或 [Releases](https://github.com/more-nico/pi-in-codex/releases) 的 macOS 预构建包安装。 |
 
 ### 1. 从源码安装
 
 ```sh
+git clone https://github.com/more-nico/pi-in-codex.git
+cd pi-in-codex
 npm ci
 npm run check
 node bin/pi-in-codex.mjs doctor
 node bin/pi-in-codex.mjs install
 ```
 
-如果你解压的是发布包，就在该目录里执行 `node bin/pi-in-codex.mjs install`。
-发布包自带依赖，但仍然使用你自己的 Node 和 pi。
+使用预构建包时，从 [v0.1.1](https://github.com/more-nico/pi-in-codex/releases/tag/v0.1.1)
+下载 `pi-in-codex-0.1.1-macos.zip` 与 `SHA256SUMS`，放在同一目录，再执行：
+
+```sh
+shasum -a 256 -c SHA256SUMS
+unzip pi-in-codex-0.1.1-macos.zip
+cd pi-in-codex
+node bin/pi-in-codex.mjs doctor
+node bin/pi-in-codex.mjs install
+```
+
+发布包包含依赖与文档，无需 `npm ci` 或构建，仍然使用你自己的 Node 和 pi。
 
 安装器把构建产物复制到 `~/.codex/plugins/pi-in-codex`，合并写入
 `~/.agents/plugins/marketplace.json`，并在修改前备份该目录文件。请务必通过安装器
@@ -240,7 +254,9 @@ node bin/pi-in-codex.mjs uninstall     # 移除插件目录与 marketplace 条�
 
 卸载只删除带标记的插件目录和它自己的 marketplace 条目，保留历史记录。守护进程诊断
 日志是数据目录里的 `daemon.log`。重装升级会停掉旧守护并中断在跑的任务，请先让
-子对话收尾或手动停止。
+子对话收尾或手动停止。安装器等待旧进程实际退出后才替换文件；客户端核对构建指纹，
+自动替换旧守护，并拒绝把新版守护降级。升级后请重启 Codex，刷新缓存的客户端；
+`doctor` 会显示两端构建标识及是否兼容。
 
 ## 面板
 
@@ -279,7 +295,7 @@ Codex 宿主的集成；`/preview.html` 对比 380px 宽度的浅色/深色面�
 `/?demo=1&markdown=1` 预览 Markdown 渲染效果。测试会跑真实的 stdio、Unix socket 和
 MCP 传输，对端是一个确定性的假 pi；真实模型冒烟测试单独运行，因为它消耗你的模型
 额度。面板挂载、hooks 信任、双窗口路由仍需在已安装的桌面端里验收。插件 ZIP 输出到
-`release/`（当前为 `pi-in-codex-0.1.0-macos.zip`）。
+`release/`（当前为 `pi-in-codex-0.1.1-macos.zip`）。
 
 带 hooks 的插件目前仍需手动安装，不在公开插件目录里；参见官方
 [打包文档](https://developers.openai.com/plugins/build/plugins)。发布产物不含任何
@@ -288,3 +304,6 @@ OpenAI 桌面端代码，保留的许可声明见 `dist/DEPENDENCY_NOTICES.txt`�
 ## 许可证
 
 MIT。见 [LICENSE](LICENSE) 与 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+这是独立社区项目，与 OpenAI、Earendil 没有隶属或背书关系。产品名称与商标归各自
+所有者；MIT 许可不授予商标权。紫色终端符号为本项目原创图形，并非 Codex 官方 Logo。
