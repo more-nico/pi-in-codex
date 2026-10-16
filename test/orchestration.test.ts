@@ -190,10 +190,12 @@ test('retry keys deduplicate concurrent spawn/send, persist receipts, and reject
   const [a, b] = await Promise.all([call('pi_spawn', args), call('pi_spawn', args)]);
   assert.equal(a.agentId, b.agentId); assert.equal(manager.list('a').agents.length, 1);
   await assert.rejects(call('pi_spawn', { ...args, task: 'different' }), /different arguments/);
-  await call('pi_message', { agentId: a.agentId, message: 'One delivery', requestId: 'message-1' });
-  await call('pi_message', { agentId: a.agentId, message: 'One delivery', requestId: 'message-1' });
-  await until(() => manager.read('a', a.agentId).messages.some(message => message.text === 'One delivery'));
-  assert.equal(manager.read('a', a.agentId, 200).messages.filter(message => message.text === 'One delivery').length, 1);
+  const message = { agentId: a.agentId, message: 'One delivery', requestId: 'message-1' };
+  await Promise.all([call('pi_message', message), call('pi_message', message)]);
+  assert.equal((await call('pi_wait', { agentIds: [a.agentId], timeoutMs: 3000 })).reason, 'completed');
+  // The fake Pi echoes this text in its final assistant reply. Count delivered
+  // inputs after settlement, rather than racing that legitimate reply.
+  assert.equal(manager.read('a', a.agentId, 200).messages.filter(message => message.role === 'user' && message.text === 'One delivery').length, 1);
   await manager.close();
   const data = JSON.parse(await readFile(join(root, 'state.json'), 'utf8'));
   data.receipts[0].state = 'pending'; await writeFile(join(root, 'state.json'), JSON.stringify(data));
