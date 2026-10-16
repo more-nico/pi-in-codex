@@ -23,6 +23,32 @@ async function until(predicate: () => boolean) {
   while (!predicate()) { if (Date.now() > end) throw new Error('Condition timed out'); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
 
+test('send tools request one shared panel and retry receipts use current UI presence', async t => {
+  const { manager, call } = await fixture(t);
+  const args = { name: 'panel', task: 'hold', requestId: 'panel-spawn' };
+  const first = await call('pi_spawn', args);
+  assert.equal(first.panel.shouldOpen, true);
+  const opened = await call('pi_panel');
+  assert.equal(opened.panel.state, 'opening');
+  assert.equal((await call('pi_spawn', args)).panel.shouldOpen, false);
+  const panelId = '17da566e-8dc5-4ea2-8c56-954c3224ac53';
+  await call('pi_poll', { waitMs: 0, panelId });
+  assert.equal((await call('pi_message', { agentId: first.agentId, message: 'Keep working' })).panel.state, 'open');
+  assert.equal((await call('pi_spawn', args)).panel.shouldOpen, false);
+  // A cancelled UI request must release its own presence, including an already-aborted call.
+  const controller = new AbortController();
+  controller.abort();
+  await dispatch(manager, { id: 'close', method: 'pi_poll', threadId: 'a', args: { waitMs: 0, panelId } }, controller.signal);
+  assert.equal((await call('pi_spawn', args)).panel.shouldOpen, true, 'the receipt must not cache an old UI hint');
+  assert.equal(manager.list('a').agents.length, 1);
+  assert.equal(manager.panels.status('b').shouldOpen, true);
+  const snapshot = await call('pi_poll', { waitMs: 0, panelId }, 'c');
+  const closing = new AbortController();
+  const waiting = dispatch(manager, { id: 'in-flight', method: 'pi_poll', threadId: 'c', args: { cursor: snapshot.cursor, waitMs: 25_000, panelId } }, closing.signal);
+  closing.abort(); await waiting;
+  assert.equal(manager.panels.status('c').shouldOpen, true);
+});
+
 test('progress reports wake waits and hooks, persist, isolate chats, and require event acknowledgment', async t => {
   const { manager, call } = await fixture(t);
   const child = await call('pi_spawn', { name: 'report', task: 'report' });

@@ -11,6 +11,7 @@ import { errorText } from './config.js';
 import { validateWaitTimeout } from './wait.js';
 import { ACTIVE, type Agent, type Completion, type MailEvent, type Message, type Parent, type PiRecord, type SpawnInput, type ToolCall } from './types.js';
 import { profiles } from './profiles.js';
+import { PanelPresence } from './panel.js';
 
 export interface ManagerOptions { executable?: string; prefixArgs?: string[]; maxConcurrent?: number; maxPerThread?: number; idleMs?: number; extraArgs?: string[]; extensionPath?: string }
 export interface WaitOptions { runIds?: Record<string, string>; afterCursor?: string; mode?: 'any' | 'all'; wakeOnMessages?: boolean }
@@ -32,6 +33,7 @@ const toolCalls = (value: PiRecord): ToolCall[] | undefined => Array.isArray(val
 const actions: Record<string, string> = { read: 'reading', bash: 'running command', edit: 'editing', write: 'writing', grep: 'searching', find: 'finding files', ls: 'listing' };
 
 export class Manager extends EventEmitter {
+  readonly panels = new PanelPresence();
   private processes = new Map<string, PiProcess>();
   private idle = new Map<string, NodeJS.Timeout>();
   private revisions = new Map<string, number>();
@@ -165,21 +167,24 @@ export class Manager extends EventEmitter {
       pendingCompletions: this.store.data.completions.filter(result => result.threadId === threadId && !result.acknowledged).length,
     };
   }
-  async poll(threadId: string, cursor?: string, waitMs = 20_000, signal?: AbortSignal) {
+  async poll(threadId: string, cursor?: string, waitMs = 20_000, signal?: AbortSignal, panelId?: string) {
     this.assertParent(threadId);
-    if (cursor === this.cursor(threadId) && waitMs > 0 && !signal?.aborted) await new Promise<void>(resolve => {
-      const finish = () => { clearTimeout(timer); this.off('change', onChange); signal?.removeEventListener('abort', finish); resolve(); };
-      const onChange = (changed: string) => { if (threadId === changed) finish(); };
-      const timer = setTimeout(finish, Math.min(25_000, waitMs));
-      this.on('change', onChange); signal?.addEventListener('abort', finish, { once: true });
-      if (cursor !== this.cursor(threadId) || signal?.aborted) finish();
-    });
-    const snapshot = this.snapshot(threadId);
-    const prefix = `${this.revisionEpoch}:`;
-    if (!cursor?.startsWith(prefix)) return snapshot;
-    const previous = Number(cursor.slice(prefix.length));
-    if (!Number.isSafeInteger(previous) || previous < 0 || previous > (this.revisions.get(threadId) || 0)) return snapshot;
-    return { ...snapshot, full: false, agents: snapshot.agents.filter(agent => (this.agentRevisions.get(agent.id) || 0) > previous) };
+    const finishPresence = this.panels.poll(threadId, panelId);
+    try {
+      if (cursor === this.cursor(threadId) && waitMs > 0 && !signal?.aborted) await new Promise<void>(resolve => {
+        const finish = () => { clearTimeout(timer); this.off('change', onChange); signal?.removeEventListener('abort', finish); resolve(); };
+        const onChange = (changed: string) => { if (threadId === changed) finish(); };
+        const timer = setTimeout(finish, Math.min(25_000, waitMs));
+        this.on('change', onChange); signal?.addEventListener('abort', finish, { once: true });
+        if (cursor !== this.cursor(threadId) || signal?.aborted) finish();
+      });
+      const snapshot = this.snapshot(threadId);
+      const prefix = `${this.revisionEpoch}:`;
+      if (!cursor?.startsWith(prefix)) return snapshot;
+      const previous = Number(cursor.slice(prefix.length));
+      if (!Number.isSafeInteger(previous) || previous < 0 || previous > (this.revisions.get(threadId) || 0)) return snapshot;
+      return { ...snapshot, full: false, agents: snapshot.agents.filter(agent => (this.agentRevisions.get(agent.id) || 0) > previous) };
+    } finally { finishPresence(!!signal?.aborted); }
   }
   async spawn(threadId: string, input: SpawnInput) {
     this.assertHealthy(); this.assertParent(threadId);

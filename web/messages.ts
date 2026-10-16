@@ -1,7 +1,27 @@
-import type { Agent, Message } from '../src/types.js';
+import type { Agent, Message, ToolCall } from '../src/types.js';
 
 /** History is loaded in pages of this size; the manager windows poll snapshots the same way. */
 export const MESSAGE_PAGE = 50;
+
+export type TranscriptMessage = { message: Message; tools: Array<{ call: ToolCall; result?: Message }> };
+const toolKey = (runId: string, id: string) => JSON.stringify([runId, id]);
+const isToolResult = (message: Message) => message.role === 'toolResult' || message.role === 'tool';
+
+/** A tool invocation and its result are one row, matched by run and call ID, never by tool name. */
+export function transcriptMessages(messages: Message[]): TranscriptMessage[] {
+  const calls = new Set<string>(), results = new Map<string, Message>();
+  for (const message of messages) {
+    if (message.role === 'assistant') for (const call of message.toolCalls || []) if (call.id) calls.add(toolKey(message.runId, call.id));
+    if (isToolResult(message) && message.toolCallId) results.set(toolKey(message.runId, message.toolCallId), message);
+  }
+  return messages.flatMap(message => {
+    // An unmatched result stays visible when its invocation is outside the loaded history window.
+    if (isToolResult(message) && message.toolCallId && calls.has(toolKey(message.runId, message.toolCallId))) return [];
+    return [{ message, tools: message.role === 'assistant' ? (message.toolCalls || []).map(call => ({
+      call, result: call.id ? results.get(toolKey(message.runId, call.id)) : undefined,
+    })) : [] }];
+  });
+}
 
 /** A completed task opens on its final answer, never on tool calls or an older run. */
 export function completedSummary(agent: Agent): string {

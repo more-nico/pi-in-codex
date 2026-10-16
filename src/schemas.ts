@@ -19,7 +19,7 @@ export const schemas = {
   pi_ack: z.object({ completionIds: z.array(z.string().uuid()).max(100).default([]), eventIds: z.array(z.string().uuid()).max(100).default([]) }),
   pi_archive: z.object({ agentId, archived: z.boolean().default(true) }),
   pi_panel: z.object({}),
-  pi_poll: z.object({ cursor: z.string().optional(), waitMs: z.number().int().min(0).max(25_000).default(20_000) }),
+  pi_poll: z.object({ cursor: z.string().optional(), waitMs: z.number().int().min(0).max(25_000).default(20_000), panelId: z.string().uuid().optional() }),
   pi_reply: z.object({ agentId, requestId: text, value: z.string().optional(), confirmed: z.boolean().optional(), cancelled: z.boolean().default(false) }),
   pi_models: z.object({ agentId: agentId.optional(), model: z.object({ provider: text, id: text }).optional() }),
 };

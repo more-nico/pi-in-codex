@@ -68,10 +68,11 @@ export async function dispatch(manager: Manager, request: Request, signal?: Abor
   const args: any = schemas[name].parse(request.args || {});
   const execute = async () => { switch (name) {
     case 'pi_spawn': return manager.spawn(threadId, args);
-    case 'pi_list': case 'pi_panel': {
+    case 'pi_list': {
       return manager.list(threadId, args);
     }
-    case 'pi_poll': return manager.poll(threadId, args.cursor, args.waitMs, signal);
+    case 'pi_panel': return { ...manager.list(threadId), panel: manager.panels.request(threadId) };
+    case 'pi_poll': return manager.poll(threadId, args.cursor, args.waitMs, signal, args.panelId);
     case 'pi_read': return manager.read(threadId, args.agentId, args.limit, args.includeTools, args.includePartial, args.before);
     case 'pi_send': return manager.send(threadId, args.agentId, args.message, args.mode);
     case 'pi_message': return manager.messageParentToChild(threadId, args.agentId, args.message);
@@ -86,6 +87,8 @@ export async function dispatch(manager: Manager, request: Request, signal?: Abor
     case 'pi_archive': return manager.archive(threadId, args.agentId, args.archived);
     case 'pi_models': return manager.models(threadId, args.agentId, args.model);
   } };
-  return ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up'].includes(name)
-    ? manager.idempotent(threadId, name, args, execute) : execute();
+  const opensPanel = ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up'].includes(name);
+  const result = opensPanel ? await manager.idempotent(threadId, name, args, execute) : await execute();
+  // UI advice is current presence, never a stale part of an idempotency receipt.
+  return opensPanel ? { ...result, panel: manager.panels.status(threadId) } : result;
 }

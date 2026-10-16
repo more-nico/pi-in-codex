@@ -178,6 +178,8 @@ main { height: 100dvh; min-height: 400px; display: flex; flex-direction: column;
 .disclosure-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; line-height: 1.65; color: var(--text) }
 .disclosure-body pre + pre { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border) }
 .disclosure-body .command-line { color: var(--text-strong) }
+.tool-section-label { margin: 10px 0 5px; font-size: 9px; font-weight: 600; color: var(--muted) }
+.tool-section-label:first-child { margin-top: 0 }
 .message.auxiliary { margin-bottom: 12px }
 
 .jump-latest { position: absolute; right: 8px; bottom: 12px; padding: 7px 11px; box-shadow: var(--shadow); border: 1px solid var(--border-strong); background: var(--surface); border-radius: 20px; font-size: 10px; color: var(--text-strong) }

@@ -1,15 +1,18 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { Agent, Message, ToolCall } from '../src/types.js';
+import type { Agent, Message } from '../src/types.js';
 import { call, connect, demo } from './bridge.js';
 import { activityLabel, compactTokens, elapsed, statusLabel } from './format.js';
 import { MarkdownText } from './markdown.js';
 import { BrandMark } from './brand.js';
-import { argumentHint, compactLine, completedProcessMessages, completedSummary, hasEarlierMessages, mergeAgents, mergeOlder, MESSAGE_PAGE, outputSummary, prettyArguments, recentMessages, visibleMessages } from './messages.js';
+import { selectAgent } from './selection.js';
+import { completedProcessMessages, completedSummary, hasEarlierMessages, mergeAgents, mergeOlder, MESSAGE_PAGE, recentMessages, visibleMessages } from './messages.js';
+import { Transcript } from './transcript.js';
 import './style.css';
 
 type PanelAgent = Agent & { messageTotal?: number };
 const active = (agent: Agent) => ['queued', 'starting', 'running', 'waiting_input'].includes(agent.status);
+const finished = (agent: Agent) => agent.status === 'completed' || agent.status === 'failed';
 const nearTop = 80;
 const nearBottom = 60;
 const duration = (agent: Agent) => elapsed(agent.startedAt || agent.createdAt, agent.finishedAt).replace(/h/g, '小时').replace(/m/g, '分').replace(/s/g, '秒').replace(/\s+/g, '');
@@ -21,46 +24,6 @@ function StatusDot({ agent }: { agent: Agent }) {
 
 function PinIcon() {
   return <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 2h6M6 2v4L4 9v1h8V9l-2-3V2M8 10v4" /></svg>;
-}
-
-function Disclosure({ label, hint, meta, tone, children }: { label: string; hint?: string; meta?: string; tone?: 'danger'; children: React.ReactNode }) {
-  return <details className={`disclosure${tone ? ` tone-${tone}` : ''}`}>
-    <summary><span className="disclosure-label">{label}</span>{hint && <span className="disclosure-hint" title={hint}>{hint}</span>}{meta && <span className="disclosure-meta">{meta}</span>}<span className="disclosure-chevron" aria-hidden="true" /></summary>
-    <div className="disclosure-body">{children}</div>
-  </details>;
-}
-
-function ToolCallRow({ call: toolCall }: { call: ToolCall }) {
-  return <Disclosure label={toolCall.name} hint={argumentHint(toolCall.arguments)}>
-    <pre>{prettyArguments(toolCall.arguments)}</pre>
-  </Disclosure>;
-}
-
-const auxiliaryLabels: Record<string, string> = { toolResult: '工具结果', bashExecution: '命令', system: '系统', custom: '扩展消息', branchSummary: '分支摘要', compactionSummary: '压缩摘要' };
-const auxiliaryLabel = (message: Message) => message.role === 'toolResult' && message.toolName ? `工具 · ${message.toolName}` : auxiliaryLabels[message.role] || `消息 · ${message.role}`;
-
-function MessageItem({ message }: { message: Message }) {
-  const time = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (message.role === 'user') return <article className="message user">
-    <header className="message-label"><span>指令</span><time>{time}</time></header>
-    <MarkdownText text={message.text} />
-    {message.error && <p className="message-error">{message.error}</p>}
-  </article>;
-  if (message.role === 'assistant') return <article className="message assistant">
-    <header className="message-label"><span>PI</span><time>{time}</time>{!message.complete && <i className="typing" aria-label="正在输出" />}</header>
-    {message.text ? <MarkdownText text={message.text} /> : !message.complete ? <div className="message-text placeholder">…</div> : null}
-    {message.toolCalls?.map((toolCall, index) => <ToolCallRow key={toolCall.id || `${message.id}-${index}`} call={toolCall} />)}
-    {!message.text && message.complete && !message.toolCalls?.length && <div className="message-text placeholder">(无文本)</div>}
-    {message.error && <p className="message-error">{message.error}</p>}
-  </article>;
-  return <article className={`message auxiliary${message.isError ? ' is-error' : ''}`}>
-    <Disclosure label={auxiliaryLabel(message)} hint={message.command ? `$ ${message.command}` : compactLine(message.text)} meta={outputSummary(message.text)} tone={message.isError ? 'danger' : undefined}>
-      {message.command && <pre className="command-line"><span aria-hidden="true">$ </span>{message.command}</pre>}
-      {['tool', 'toolResult', 'bashExecution'].includes(message.role)
-        ? <pre>{message.text || '（空输出）'}</pre>
-        : <MarkdownText text={message.text || '（空输出）'} />}
-    </Disclosure>
-  </article>;
 }
 
 function Panel() {
@@ -120,7 +83,7 @@ function Panel() {
     })();
     return () => { disposed = true; controller.abort(); };
   }, [attempt]);
-  useEffect(() => { if (agents.length) setSelected(previous => previous && agents.some(agent => agent.id === previous) ? previous : agents[0]?.id); }, [agents]);
+  useEffect(() => { if (agents.length) setSelected(previous => selectAgent(agents, previous)); }, [agents]);
   // Keep the reading position while history is prepended; only follow new output when already at the bottom.
   useLayoutEffect(() => {
     const node = scroll.current, pendingAnchor = anchor.current;
@@ -164,8 +127,8 @@ function Panel() {
     } catch (e) { leaveHistory(current.id); setError((e as Error).message); }
     finally { inFlight.current.delete(current.id); if (selectedRef.current === current.id) setLoadingOlder(false); }
   }
-  const running = agents.filter(agent => agent.status !== 'completed').sort((a, b) => a.createdAt - b.createdAt);
-  const completed = agents.filter(agent => agent.status === 'completed').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+  const running = agents.filter(agent => !finished(agent)).sort((a, b) => a.createdAt - b.createdAt);
+  const completed = agents.filter(finished).sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
   const row = (item: Agent) => <button key={item.id} className={`agent-row ${selected === item.id ? 'selected' : ''}`} onClick={() => choose(item.id)}>
     <StatusDot agent={item} /><span className="agent-info"><span className="row-top"><strong>{item.name}</strong>{selected === item.id && <span className="selected-mark" aria-label="当前任务">✓</span>}</span>
       <span className="row-bottom">{activityLabel(item.activity)}</span></span>
@@ -210,7 +173,7 @@ function Panel() {
               <div className="process-body">
                 <div className="process-stats">{agent.toolUses} 次工具调用<span>·</span>{compactTokens(agent.tokens)} tokens</div>
                 {earlier && <button className="load-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? '正在加载更早消息…' : `↑ 加载更早的 ${MESSAGE_PAGE} 条`}</button>}
-                {completedProcessMessages(agent, visible).map(message => <MessageItem key={message.id} message={message} />)}
+                <Transcript messages={completedProcessMessages(agent, visible)} />
               </div>
             </div>
           </section>
@@ -218,7 +181,7 @@ function Panel() {
         </> : <>
           {earlier && <button className="load-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? '正在加载更早消息…' : `↑ 加载更早的 ${MESSAGE_PAGE} 条`}</button>}
           {visible.length === 0 && <p className="no-messages">{agent.status === 'queued' ? '任务已排队，等待可用运行名额。' : '等待 Pi 的第一条消息…'}</p>}
-          {visible.map(message => <MessageItem key={message.id} message={message} />)}
+          <Transcript messages={visible} />
         </>}
         {agent.error && <p className="run-error">{agent.error}</p>}
         {!!agent.undelivered?.length && <div className="run-error">未确认送达的排队消息：{agent.undelivered.map((text, index) => <p key={index}>{text}</p>)}</div>}

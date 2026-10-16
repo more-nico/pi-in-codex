@@ -7,6 +7,7 @@ import { schemas, resolveThread, type ToolName } from './schemas.js';
 import { errorText } from './config.js';
 
 const URI = 'ui://pi-in-codex/panel-v1.html';
+const panelWorkflow = ' After success, inspect result.panel.shouldOpen: when true call pi_panel once (one call for a batch); when false reuse the existing/opening panel. Do not reopen it or change the selected child.';
 const descriptions: Record<ToolName, string> = {
   pi_spawn: 'Before starting a Pi child, estimate its task duration and tell the user the approximate range. Start an independent child for this chat with explicit context. Returns immediately. Pi uses its own permissions and credentials.',
   pi_list: 'List Pi child conversations belonging to this Codex chat only, with current status.',
@@ -21,7 +22,7 @@ const descriptions: Record<ToolName, string> = {
   pi_result: 'Read a complete result by stable completionId, including an older run. Supports offset/maxChars paging; use this when a wait or hook preview is truncated.',
   pi_archive: 'Archive a settled child and release its idle process, preserving history and pending results. Set archived=false to restore. Active children must be stopped first.',
   pi_ack: 'Acknowledge consumed completionIds and/or mailbox eventIds. Completion acknowledgments also acknowledge the matching event, and vice versa. Safe to repeat.',
-  pi_panel: 'Open the Pi agents panel for the current conversation.',
+  pi_panel: 'Open the single shared Pi agents panel for the current chat. After spawn/send/message/follow_up, call only when result.panel.shouldOpen is true; an open panel refreshes itself and keeps its selected child.',
   pi_poll: 'Get the current panel snapshot, waiting for conversation-scoped changes when the supplied cursor is current.',
   pi_reply: 'The parent Codex conversation responds to a pending Pi extension input, selection, or confirmation request. The panel is read-only. Use task context and existing authorization; ask in the parent chat if essential information or approval is missing.',
   pi_models: 'Discover Pi models before spawning, without submitting an agent prompt. Optional model selects a temporary probe to query its supported thinking levels. agentId alone queries that child when available.',
@@ -36,7 +37,7 @@ export function createMcpServer() {
     const modelOnly = ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up', 'pi_interrupt', 'pi_stop', 'pi_reply', 'pi_ack', 'pi_archive'].includes(name);
     registerAppTool(server, name, {
       title: name === 'pi_panel' ? 'Pi agents' : name,
-      description: descriptions[name], inputSchema: schemas[name].shape,
+      description: descriptions[name] + (['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up'].includes(name) ? panelWorkflow : ''), inputSchema: schemas[name].shape,
       annotations: { readOnlyHint: readOnly, destructiveHint: !readOnly && name !== 'pi_ack', idempotentHint: readOnly || ['pi_ack', 'pi_stop'].includes(name), openWorldHint: !readOnly },
       _meta: { ui: { ...(name === 'pi_panel' ? { resourceUri: URI } : {}), visibility: modelOnly ? ['model'] : appOnly ? ['app'] : ['model', 'app'] },
         ...(name === 'pi_panel' ? { 'openai/ui': { entrypoints: [{ type: 'thread' }] } } : {}) },

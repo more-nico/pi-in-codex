@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pi_in_codex · 插件介绍</title>
+<meta name="description" content="pi_in_codex：在当前 Codex 聊天之外，启动隔离的 Pi 子 agent，并在侧面板实时查看进展。">
+<style>
+:root{--bg:#0b0b0d;--panel:#141418;--panel2:#0f0f12;--line:#26262d;--text:#f2f2f5;--muted:#9a9aa6;--blue:#6ea8ff;--violet:#a78bfa;--grad:linear-gradient(135deg,#6ea8ff,#a78bfa)}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+header{position:sticky;top:0;z-index:5;background:rgba(11,11,13,.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:600}
+.brand img{width:28px;height:28px}
+.nav nav a{color:var(--muted);margin-left:22px;font-size:14px}
+.nav nav a:hover{color:var(--text);text-decoration:none}
+.hero{padding:96px 0 72px;text-align:center}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 14px;font-size:13px;color:var(--muted);margin-bottom:24px}
+h1{font-size:clamp(36px,6vw,60px);line-height:1.15;margin:0 0 20px;letter-spacing:-.02em}
+.grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--muted);font-size:18px;max-width:640px;margin:0 auto 36px}
+.btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{padding:11px 22px;border-radius:10px;font-size:15px;border:1px solid var(--line);color:var(--text);background:var(--panel)}
+.btn.primary{background:var(--text);color:#0b0b0d;border-color:var(--text);font-weight:600}
+.btn:hover{text-decoration:none;filter:brightness(1.12)}
+section{padding:80px 0;border-top:1px solid var(--line)}
+h2{font-size:30px;margin:0 0 12px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0 0 40px;max-width:680px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;transition:border-color .2s}
+.card:hover{border-color:#3a3a46}
+.card h3{margin:0 0 8px;font-size:17px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.ico{width:36px;height:36px;border-radius:10px;background:rgba(110,168,255,.12);color:var(--blue);display:grid;place-items:center;margin-bottom:16px;font-weight:700;font-size:15px}
+.ico.v{background:rgba(167,139,250,.12);color:var(--violet)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;list-style:none;padding:0;margin:0;counter-reset:s}
+.steps li{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;color:var(--muted);font-size:15px;counter-increment:s}
+.steps li::before{content:"0" counter(s);display:block;color:var(--violet);font-size:13px;font-weight:600;margin-bottom:12px}
+.steps b{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+.note{border-left:2px solid var(--violet);padding:6px 18px;color:var(--muted);margin:28px 0 0;font-size:15px}
+.note b{color:var(--text)}
+.limits{margin-top:40px;display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.limits div{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:20px 22px;color:var(--muted);font-size:15px}
+.limits b{color:var(--text);display:block;margin-bottom:4px}
+pre{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:0 0 12px;overflow-x:auto;font:14px/1.6 ui-monospace,Menlo,Consolas,monospace;color:#d6d6de}
+.cmd{position:relative}
+.cmd pre{padding-right:84px}
+.copy{position:absolute;top:10px;right:10px;background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:8px;font:12px/1 -apple-system,sans-serif;padding:6px 10px;cursor:pointer}
+.copy:hover{color:var(--text)}
+.copy.ok{color:var(--blue)}
+.copy.err{color:#f0a3a3;border-color:#4a2a2a}
+.install{max-width:760px}
+.links{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px}
+.links a{display:block;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;color:var(--text);font-weight:600}
+.links a span{display:block;color:var(--muted);font-size:14px;font-weight:400;margin-top:4px}
+.links a:hover{border-color:#3a3a46;text-decoration:none}
+footer{padding:40px 0;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+@media (max-width:860px){.grid,.links{grid-template-columns:1fr 1fr}.steps{grid-template-columns:1fr 1fr}.nav nav{display:none}}
+@media (max-width:560px){.grid,.links,.steps,.limits{grid-template-columns:1fr}.hero{padding:64px 0 48px}h2{font-size:26px}section{padding:56px 0}.wrap{padding:0 18px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top"><img src="../assets/pi-in-codex.svg" alt="" width="28" height="28">pi_in_codex</a>
+    <nav><a href="#features">核心能力</a><a href="#flow">工作方式</a><a href="#install">本地安装</a><a href="#docs">文档</a></nav>
+  </div>
+</header>
+
+<main id="top">
+<div class="wrap hero">
+  <span class="tag">Codex 插件 · 隔离的 Pi 子 agent</span>
+  <h1>让 <span class="grad">Pi</span> 在旁边干活，<br>主聊天保持清爽</h1>
+  <p class="lead">pi_in_codex 在当前 Codex 对话之外启动一个隔离的 Pi 子 agent，把你明确交给它的上下文带过去，并在侧面板里实时只读地查看它的进展。</p>
+  <div class="btns">
+    <a class="btn primary" href="#install">本地安装</a>
+    <a class="btn" href="../README.zh-CN.md">阅读文档</a>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>核心能力</h2>
+    <p class="sub">围绕“隔离、可见、可控”设计，不替代你的主对话，只承接需要单独推进的子任务。</p>
+    <div class="grid">
+      <div class="card"><div class="ico">独</div><h3>隔离的子 agent</h3><p>每个 Pi 子任务运行在当前聊天之外，互不污染主对话的上下文与历史。</p></div>
+      <div class="card"><div class="ico v">显</div><h3>显式上下文</h3><p>只传递你指定的文件、片段与说明，不会把整段聊天记录默认带过去。</p></div>
+      <div class="card"><div class="ico">览</div><h3>实时只读侧面板</h3><p>在侧面板观察子任务的输出与状态，查看过程而不会干扰它的执行。</p></div>
+      <div class="card"><div class="ico v">导</div><h3>steering 与 follow-up</h3><p>运行中可以追加方向性指令（steering），也可以在结束后继续追问（follow-up）。</p></div>
+      <div class="card"><div class="ico">安</div><h3>安全点回传</h3><p>结果在安全的节点回传到主聊天，避免半成品随意插入你正在进行的讨论。</p></div>
+      <div class="card"><div class="ico v">认</div><h3>复用本地认证</h3><p>直接沿用你机器上已配置的 Pi 本地模型认证，不需要为插件另行配置凭据。</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="flow">
+  <div class="wrap">
+    <h2>工作方式</h2>
+    <p class="sub">一次委派分为四步，每一步都在你的掌控之中。</p>
+    <ol class="steps">
+      <li><b>发起</b>在主聊天中说明任务，并明确指定需要传递的上下文。</li>
+      <li><b>隔离运行</b>Pi 子 agent 在独立环境中执行，侧面板只读展示进展。</li>
+      <li><b>中途调整</b>运行中用 steering 修正方向，结束后可用 follow-up 继续追问。</li>
+      <li><b>安全点回传</b>结果在安全节点带回主聊天，历史完整保留以便回看。</li>
+    </ol>
+    <p class="note"><b>注意：</b>主聊天处于闲置时，插件不会自动唤醒它。子任务结果会在你的下一轮对话中被收取。</p>
+    <div class="limits">
+      <div><b>不是原生 Codex subagent</b>pi_in_codex 调用的是独立的 Pi 子 agent，而非 Codex 内置的 subagent 机制。</div>
+      <div><b>不继承 Codex 沙箱</b>Pi 子 agent 不会自动沿用 Codex 的沙箱限制，请按自己的安全要求评估与配置。</div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap install">
+    <h2>本地安装</h2>
+    <p class="sub">目前支持 macOS。在仓库根目录依次执行下面四条命令即可完成本地安装与检查。</p>
+    <div class="cmd"><pre><code>npm ci</code></pre><button class="copy" type="button">复制</button></div>
+    <div class="cmd"><pre><code>npm run check</code></pre><button class="copy" type="button">复制</button></div>
+    <div class="cmd"><pre><code>node bin/pi-in-codex.mjs doctor</code></pre><button class="copy" type="button">复制</button></div>
+    <div class="cmd"><pre><code>node bin/pi-in-codex.mjs install</code></pre><button class="copy" type="button">复制</button></div>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <h2>文档入口</h2>
+    <p class="sub">更多细节、配置与故障排查，请从下面的文档开始。</p>
+    <div class="links">
+      <a href="../README.zh-CN.md">中文 README<span>安装、用法与配置说明</span></a>
+      <a href="../LICENSE">MIT 许可证<span>查看授权条款</span></a>
+      <a href="#install">安装步骤<span>回到本地安装命令</span></a>
+    </div>
+  </div>
+</section>
+</main>
+<footer>
+  <div class="wrap">
+    <span>pi_in_codex · 以 MIT 许可证发布</span>
+    <span><a href="../LICENSE">LICENSE</a> · <a href="../README.zh-CN.md">文档</a></span>
+  </div>
+</footer>
+<script>
+(function(){
+  // 本地降级复制：仅检查 execCommand 返回值，不读取用户剪贴板
+  function fallbackCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function copyText(text){
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function(){ return true; }, function(){ return fallbackCopy(text); });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+  function flash(btn, msg, cls){
+    clearTimeout(btn._t);
+    btn.textContent = msg;
+    btn.classList.remove('ok', 'err');
+    btn.classList.add(cls);
+    btn.setAttribute('aria-live', 'polite');
+    btn._t = setTimeout(function(){
+      btn.textContent = '复制';
+      btn.classList.remove('ok', 'err');
+      btn.removeAttribute('title');
+    }, 1600);
+  }
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var text = btn.parentElement.querySelector('code').textContent;
+      copyText(text).then(function(ok){
+        if (ok) {
+          flash(btn, '已复制', 'ok');
+        } else {
+          btn.title = '请手动选择命令';
+          flash(btn, '复制失败', 'err');
+        }
+      });
+    });
+  });
+})();
+</script>
+</body>
+</html>

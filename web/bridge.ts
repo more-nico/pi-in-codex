@@ -4,6 +4,7 @@ import type { Agent, Message } from '../src/types.js';
 export const demo = new URLSearchParams(location.search).has('demo');
 let application: App | undefined;
 let connection: Promise<void> | undefined;
+const panelId = crypto.randomUUID();
 export function connect(onContext: (context: any) => void) {
   if (demo) { const requestedTheme = new URLSearchParams(location.search).get('theme'); onContext({ theme: requestedTheme === 'dark' || requestedTheme === 'light' ? requestedTheme : window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light' }); return Promise.resolve(); }
   if (!connection) {
@@ -14,6 +15,7 @@ export function connect(onContext: (context: any) => void) {
   return connection;
 }
 export async function call(name: string, args: Record<string, any> = {}, signal?: AbortSignal): Promise<any> {
+  if (name === 'pi_poll') args = { ...args, panelId };
   if (demo) return demoCall(name, args);
   if (!application || !connection) throw new Error('Panel is not connected to Codex');
   await connection;
@@ -75,10 +77,17 @@ const sample: Agent[] = [
     messages: [
       { id: 'd0', runId: 'demo-done-run', role: 'user', text: '检查 RPC 的任务完成时机。', complete: true, timestamp: now - 120_000 },
       { id: 'd1', runId: 'demo-done-run', role: 'assistant', text: '读取协议说明。', toolCalls: [{ id: 'done-read', name: 'read', arguments: JSON.stringify({ path: 'docs/rpc.md' }) }], complete: true, timestamp: now - 100_000 },
-      { id: 'd2', runId: 'demo-done-run', role: 'toolResult', toolName: 'read', text: 'agent_end\nagent_settled\nauto_retry_start', complete: true, timestamp: now - 80_000 },
+      { id: 'd2', runId: 'demo-done-run', role: 'toolResult', toolName: 'read', toolCallId: 'done-read', text: 'agent_end\nagent_settled\nauto_retry_start', complete: true, timestamp: now - 80_000 },
       { id: 'd3', runId: 'demo-done-run', role: 'assistant', text: '## 检查结论\n\n应在 **`agent_settled`** 后判定任务完成。\n\n- `agent_end` 后仍可能继续重试、压缩或处理排队输入。\n- 本次检查已完成，未发现提前结算问题。', complete: true, timestamp: now - 60_000 },
     ] },
 ];
+if (demo && new URLSearchParams(location.search).has('failed')) sample.push({
+  id: 'demo-failed', threadId: 'demo', name: '连接失败示例', cwd: '/workspace/pi_in_codex', status: 'failed',
+  runId: 'demo-failed-run', task: '展示失败任务分组', activity: 'failed', createdAt: now - 80_000,
+  startedAt: now - 80_000, finishedAt: now - 10_000, error: 'Connection error.', tokens: 120, toolUses: 0,
+  dialogs: [], queued: [], pendingMessages: 0,
+  messages: [{ id: 'failed-1', runId: 'demo-failed-run', role: 'assistant', text: '', error: 'Connection error.', complete: true, timestamp: now - 10_000 }],
+});
 let revision = 0;
 const changes = new Map<string, number>();
 const touch = (id: string) => { revision++; changes.set(id, revision); };

@@ -54,6 +54,12 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   }
   assert.deepEqual(tools.tools.find(tool => tool.name === 'pi_poll')!._meta?.ui && (tools.tools.find(tool => tool.name === 'pi_poll')!._meta!.ui as any).visibility, ['app']);
   assert.deepEqual((tools.tools.find(tool => tool.name === 'pi_models')!._meta!.ui as any).visibility, ['model', 'app']);
+  for (const name of ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up']) {
+    const tool = tools.tools.find(tool => tool.name === name)!;
+    assert.match(tool.description!, /panel\.shouldOpen/);
+    assert.equal((tool._meta!.ui as any).resourceUri, undefined, 'data tools must not create additional panel instances');
+  }
+  assert.equal((tools.tools.find(tool => tool.name === 'pi_panel')!._meta!.ui as any).resourceUri, 'ui://pi-in-codex/panel-v1.html');
   const modelsBeforeSpawn = jsonResult(await client.callTool({ name: 'pi_models', arguments: {}, _meta: metadata('chat-a') }));
   assert.equal(modelsBeforeSpawn.selected.id, 'test-model');
   assert.equal(jsonResult(await client.callTool({ name: 'pi_list', arguments: {}, _meta: metadata('chat-a') })).agents.length, 0);
