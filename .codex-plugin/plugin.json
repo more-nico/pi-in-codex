@@ -9,6 +9,8 @@
   "interface": {
     "displayName": "Pi in Codex",
     "shortDescription": "Conversation-scoped Pi agents",
-    "iconSmall": "./assets/icon.svg"
+    "iconSmall": "./assets/icon.svg",
+    "logo": "./assets/icon.svg",
+    "composerIcon": "./assets/icon.svg"
   }
 }

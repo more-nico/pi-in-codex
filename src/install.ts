@@ -64,7 +64,7 @@ export async function install(codexHome?: string) {
       catalog.plugins = catalog.plugins.filter((plugin: any) => plugin.name !== 'pi-in-codex');
       catalog.plugins.push({ name: 'pi-in-codex', source: { source: 'local', path }, policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' }, category: 'Productivity', interface: { displayName: 'Pi in Codex', shortDescription: 'Conversation-scoped Pi agents' } });
       await saveMarketplace(marketplace, catalog);
-      return { destination, marketplace, next: 'Restart Codex, install Pi in Codex from the Local plugins source, review/trust its hooks, then start a new turn and open Pi agents in the current conversation panel.' };
+      return { destination, marketplace, next: 'Restart Codex, install Pi in Codex from the Local plugins source, review/trust its hooks, then start a new turn and open Pi in Codex in the current conversation panel.' };
     } finally { await rm(stage, { recursive: true, force: true }); }
   });
 }

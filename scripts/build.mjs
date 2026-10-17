@@ -20,12 +20,13 @@ await rm('dist', { recursive: true, force: true });
 await mkdir('dist', { recursive: true });
 await writeFile('dist/build-info.json', JSON.stringify(identity, null, 2) + '\n');
 await writeFile('dist/parent.mjs', await readFile('extensions/parent.mjs', 'utf8'));
-const backend = await build({ entryPoints: ['src/cli.ts'], outfile: 'dist/cli.mjs', bundle: true, platform: 'node', format: 'esm', target: 'node22', sourcemap: true, metafile: true, define,
+const backend = await build({ entryPoints: ['src/cli.ts'], outfile: 'dist/cli.mjs', bundle: true, platform: 'node', format: 'esm', target: 'node22', sourcemap: true, metafile: true, define, loader: { '.svg': 'text' },
   banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' } });
 const ui = await build({ entryPoints: ['web/main.tsx'], outdir: 'dist/web', bundle: true, write: false, platform: 'browser', format: 'iife', target: 'es2022', minify: true, metafile: true, loader: { '.svg': 'dataurl' }, define: { ...define, 'process.env.NODE_ENV': '"production"' } });
 const javascript = ui.outputFiles.find(file => file.path.endsWith('.js')).text.replace(/<\/script/gi, '<\\/script');
 const css = ui.outputFiles.find(file => file.path.endsWith('.css')).text;
-const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pi agents</title><style>${css}</style></head><body><div id="root"></div><script>${javascript}</script></body></html>`;
+const icon = `data:image/svg+xml;base64,${(await readFile('assets/icon.svg')).toString('base64')}`;
+const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" type="image/svg+xml" href="${icon}"><title>Pi in Codex</title><style>${css}</style></head><body><div id="root"></div><script>${javascript}</script></body></html>`;
 await writeFile('dist/panel.html', html);
 const packages = new Set();
 for (const path of [...Object.keys(backend.metafile.inputs), ...Object.keys(ui.metafile.inputs)]) {

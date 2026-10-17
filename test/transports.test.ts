@@ -48,7 +48,15 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [cli, 'mcp'], env: environment as Record<string, string> })); return client;
   };
   let client = await attach();
+  const serverInfo = client.getServerVersion()!;
+  assert.equal(serverInfo.title, 'Pi in Codex');
+  const icon = serverInfo.icons?.find(icon => icon.mimeType === 'image/svg+xml');
+  assert.ok(icon, 'server discovery must expose an SVG icon');
+  assert.ok(icon.src.startsWith('data:image/svg+xml;base64,'), 'entrypoint icon must be self-contained');
+  const iconSvg = Buffer.from(icon.src.slice('data:image/svg+xml;base64,'.length), 'base64').toString();
+  assert.equal(iconSvg, await readFile(fileURLToPath(new URL('../assets/icon.svg', import.meta.url)), 'utf8'));
   const tools = await client.listTools();
+  assert.equal(tools.tools.find(tool => tool.name === 'pi_panel')!.title, 'Pi in Codex');
   for (const name of ['pi_spawn', 'pi_send', 'pi_message', 'pi_follow_up', 'pi_interrupt', 'pi_stop', 'pi_reply', 'pi_ack', 'pi_archive']) {
     assert.deepEqual((tools.tools.find(tool => tool.name === name)!._meta!.ui as any).visibility, ['model']);
   }
@@ -65,7 +73,8 @@ test('real MCP/stdio/socket/hook chain scopes chats, redelivers at safe points a
   assert.equal(jsonResult(await client.callTool({ name: 'pi_list', arguments: {}, _meta: metadata('chat-a') })).agents.length, 0);
   const resource = await client.readResource({ uri: 'ui://pi-in-codex/panel-v1.html' });
   assert.equal(resource.contents[0].mimeType, 'text/html;profile=mcp-app');
-  assert.ok((resource.contents[0] as any).text.includes('Pi agents'));
+  assert.ok((resource.contents[0] as any).text.includes('<title>Pi in Codex</title>'));
+  assert.ok((resource.contents[0] as any).text.includes(`href="${icon.src}"`), 'panel favicon must match the entrypoint icon');
   const missing = await client.callTool({ name: 'pi_list', arguments: {} }); assert.equal(missing.isError, true);
   const child = jsonResult(await client.callTool({ name: 'pi_spawn', arguments: { name: '传输测试', task: 'normal' }, _meta: metadata('chat-a') }));
   assert.equal(jsonResult(await client.callTool({ name: 'pi_list', arguments: {}, _meta: metadata('chat-b') })).agents.length, 0);
